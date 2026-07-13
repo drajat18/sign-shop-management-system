@@ -9,12 +9,14 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setSubmitting(true);
     try {
       const { user, token } = await apiFetch<{ user: User; token: string }>("/auth/login", {
         method: "POST",
@@ -24,27 +26,48 @@ export default function Login() {
       navigate(ROLE_LANDING_PAGE[user.role]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h1>Sign Shop Login</h1>
-      <label>
-        Email
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      </label>
-      <label>
-        Password
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-      </label>
-      {error && <p role="alert">{error}</p>}
-      <button type="submit">Log in</button>
-    </form>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <span className="brand-mark">S</span>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Sign Shop</span>
+        </div>
+        <h1 className="auth-title">Welcome back</h1>
+        <p className="auth-subtitle">Log in with your employee account to continue.</p>
+
+        <form onSubmit={handleSubmit}>
+          <label className="field">
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              required
+            />
+          </label>
+          <label className="field">
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          {error && <p className="form-error">{error}</p>}
+          <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
+            {submitting ? "Logging in…" : "Log in"}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }

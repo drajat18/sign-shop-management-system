@@ -6,6 +6,7 @@ const orderItemSchema = new Schema(
     signType: { type: String, required: true },
     size: String,
     material: String,
+    description: String,
     artworkFile: { type: Schema.Types.ObjectId, ref: "FileRecord" },
     quantity: { type: Number, required: true, default: 1 },
     price: { type: Number, required: true },

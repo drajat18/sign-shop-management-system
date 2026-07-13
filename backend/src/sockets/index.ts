@@ -19,5 +19,7 @@ export function getIO(): SocketIOServer {
 
 export const EVENTS = {
   ORDER_UPDATED: "order:updated",
+  ORDER_CREATED: "order:created",
   JOB_UPDATED: "job:updated",
+  JOB_CREATED: "job:created",
 } as const;

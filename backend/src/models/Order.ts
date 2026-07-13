@@ -12,6 +12,7 @@ const orderSchema = new Schema(
   {
     customer: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
     dueDate: Date,
+    description: String,
     status: { type: String, enum: ORDER_STATUSES, default: "new" },
     total: { type: Number, default: 0 },
     paymentStatus: { type: String, enum: ["unpaid", "partial", "paid"], default: "unpaid" },

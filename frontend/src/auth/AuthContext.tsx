@@ -9,10 +9,21 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
+const STORAGE_KEY = "sign-shop-auth";
+
+function loadStored(): { user: User; token: string } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const stored = loadStored();
+  const [user, setUser] = useState<User | null>(stored?.user ?? null);
+  const [token, setToken] = useState<string | null>(stored?.token ?? null);
 
   const value = useMemo<AuthState>(
     () => ({
@@ -21,10 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: (u, t) => {
         setUser(u);
         setToken(t);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: u, token: t }));
       },
       logout: () => {
         setUser(null);
         setToken(null);
+        localStorage.removeItem(STORAGE_KEY);
       },
     }),
     [user, token]
