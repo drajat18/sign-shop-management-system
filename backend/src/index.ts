@@ -1,7 +1,12 @@
 import "dotenv/config";
+// Patches Express so a rejected promise in an async route handler is
+// forwarded to the error middleware below instead of becoming an
+// unhandled rejection that crashes the whole process — one request
+// hitting a DB hiccup used to take the entire server down.
+import "express-async-errors";
 import http from "node:http";
 import cors from "cors";
-import express from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { connectDB, getMongoUri } from "./config/db.js";
 import { initSockets } from "./sockets/index.js";
 
@@ -28,6 +33,14 @@ app.use("/api/orders", ordersRoutes);
 app.use("/api/order-items", orderItemsRoutes);
 app.use("/api/jobs", jobsRoutes);
 app.use("/api/files", filesRoutes);
+
+// Catches errors forwarded by express-async-errors (and anything passed to
+// next(err) directly) so a failed request returns a normal 500 instead of
+// crashing the process.
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal server error" });
+});
 
 const port = Number(process.env.PORT ?? 4000);
 const httpServer = http.createServer(app);
