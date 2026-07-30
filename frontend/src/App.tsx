@@ -1,13 +1,18 @@
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout.js";
+import PlatformLayout from "./components/PlatformLayout.js";
 import { useAuth } from "./auth/AuthContext.js";
+import { usePlatformAuth } from "./auth/PlatformAuthContext.js";
 import { PAGE_ACCESS, ROLE_LANDING_PAGE, canAccess } from "./auth/roles.js";
 import EmployeesPage from "./pages/admin/EmployeesPage.js";
 import SettingsPage from "./pages/admin/SettingsPage.js";
 import ForgotPassword from "./pages/ForgotPassword.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
 import Login from "./pages/Login.js";
+import PlatformLogin from "./pages/platform/PlatformLogin.js";
+import ShopsPage from "./pages/platform/ShopsPage.js";
+import TeamPage from "./pages/platform/TeamPage.js";
 import JobsPage from "./pages/production/JobsPage.js";
 import ResetPassword from "./pages/ResetPassword.js";
 import type { Role } from "./types/index.js";
@@ -18,6 +23,26 @@ function guarded(role: Role, allowed: Role[], element: ReactElement, landing: st
 
 export default function App() {
   const { user } = useAuth();
+  const { user: platformUser } = usePlatformAuth();
+
+  // The platform console lives at /platform/* independent of any shop
+  // session — a platform team member doesn't need to be (and usually
+  // isn't) logged into a shop at all.
+  const platformRoutes = (
+    <>
+      <Route
+        path="/platform/login"
+        element={platformUser ? <Navigate to="/platform/shops" replace /> : <PlatformLogin />}
+      />
+      <Route element={platformUser ? <PlatformLayout /> : <Navigate to="/platform/login" replace />}>
+        <Route path="/platform/shops" element={<ShopsPage />} />
+        <Route
+          path="/platform/team"
+          element={platformUser?.role === "owner" ? <TeamPage /> : <Navigate to="/platform/shops" replace />}
+        />
+      </Route>
+    </>
+  );
 
   if (!user) {
     return (
@@ -25,6 +50,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        {platformRoutes}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -37,6 +63,7 @@ export default function App() {
       <Route path="/login" element={<Navigate to={landing} replace />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      {platformRoutes}
       <Route element={<AppLayout />}>
         <Route path="/orders" element={guarded(user.role, PAGE_ACCESS.orders, <OrdersPage />, landing)} />
         <Route path="/jobs" element={guarded(user.role, PAGE_ACCESS.jobs, <JobsPage />, landing)} />

@@ -77,6 +77,35 @@ export interface NewOrderItemInput {
   file?: File | null;
 }
 
+export type PlatformRole = "owner" | "support" | "billing" | "onboarding";
+
+export interface PlatformUser {
+  id: string;
+  name: string;
+  role: PlatformRole;
+}
+
+export interface PlatformTeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: PlatformRole;
+  active: boolean;
+}
+
+export type PlanTier = "starter" | "growth" | "pro";
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled";
+
+export interface Shop {
+  id: string;
+  name: string;
+  slug: string;
+  planTier: PlanTier;
+  subscriptionStatus: SubscriptionStatus;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface ProductionJob {
   id: string;
   status: JobStatus;

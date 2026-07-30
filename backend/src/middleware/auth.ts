@@ -5,6 +5,7 @@ import { getShopConnection } from "../services/shopConnection.js";
 import type { Role } from "../types/roles.js";
 
 export interface AuthPayload {
+  type: "shop";
   userId: string;
   role: Role;
   shopId: string;
@@ -34,6 +35,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload;
+    // Platform-team tokens are signed with the same secret, so the `type`
+    // marker is what keeps the two token kinds from ever being interchangeable.
+    if (payload.type !== "shop") {
+      return res.status(401).json({ error: "Invalid token" });
+    }
     req.auth = payload;
     req.models = getShopModels(getShopConnection(payload.shopId));
     next();

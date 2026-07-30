@@ -12,6 +12,7 @@
     "start": "node dist/index.js",
     "provision-shop": "tsx src/scripts/provisionShop.ts",
     "migrate": "tsx src/scripts/runMigrations.ts",
+    "bootstrap-owner": "tsx src/scripts/bootstrapPlatformOwner.ts",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
