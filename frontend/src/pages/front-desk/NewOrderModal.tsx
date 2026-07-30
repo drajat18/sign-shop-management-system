@@ -191,58 +191,91 @@ export default function NewOrderModal({
           <p className="section-label">Line items</p>
           {items.map((item, i) => (
             <div className="item-card" key={i}>
-              <div className="item-row">
-                <input
-                  placeholder="Storefront sign"
-                  value={item.signType}
-                  onChange={(e) => updateItem(i, { signType: e.target.value })}
-                />
-                <input
-                  placeholder='24"x36"'
-                  value={item.size}
-                  onChange={(e) => updateItem(i, { size: e.target.value })}
-                />
-                <input
-                  placeholder="Aluminum"
-                  value={item.material}
-                  onChange={(e) => updateItem(i, { material: e.target.value })}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  value={item.quantity}
-                  onChange={(e) => updateItem(i, { quantity: Number(e.target.value) || 1 })}
-                />
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={item.price}
-                  onChange={(e) => updateItem(i, { price: Number(e.target.value) || 0 })}
-                />
-                <button
-                  type="button"
-                  className="item-row-remove"
-                  onClick={() => removeItem(i)}
-                  aria-label="Remove item"
-                >
-                  ×
-                </button>
+              <div className="item-card-header">
+                <span className="item-card-title">Item {i + 1}</span>
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    className="item-row-remove"
+                    onClick={() => removeItem(i)}
+                    aria-label="Remove item"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
-              <div className="item-card-footer">
-                <input
+
+              <div className="item-grid-primary">
+                <label className="field">
+                  Sign type
+                  <input
+                    placeholder="Storefront sign"
+                    value={item.signType}
+                    onChange={(e) => updateItem(i, { signType: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  Size
+                  <input
+                    placeholder='24"x36"'
+                    value={item.size}
+                    onChange={(e) => updateItem(i, { size: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  Material
+                  <input
+                    placeholder="Aluminum"
+                    value={item.material}
+                    onChange={(e) => updateItem(i, { material: e.target.value })}
+                  />
+                </label>
+              </div>
+
+              <div className="item-grid-secondary">
+                <label className="field">
+                  Quantity
+                  <input
+                    type="number"
+                    min={1}
+                    value={item.quantity}
+                    onChange={(e) => updateItem(i, { quantity: Number(e.target.value) || 1 })}
+                  />
+                </label>
+                <label className="field">
+                  Price (per unit)
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={item.price}
+                    onChange={(e) => updateItem(i, { price: Number(e.target.value) || 0 })}
+                  />
+                </label>
+              </div>
+
+              <div className="field item-description-field">
+                Item description
+                <textarea
                   className="item-description"
-                  placeholder="Item description / production notes…"
+                  rows={2}
+                  placeholder="Production notes for this specific item…"
                   value={item.description}
                   onChange={(e) => updateItem(i, { description: e.target.value })}
                 />
-                <label className="file-input">
-                  {item.file ? item.file.name : "Attach design file"}
-                  <input
-                    type="file"
-                    onChange={(e) => updateItem(i, { file: e.target.files?.[0] ?? null })}
-                  />
-                </label>
+              </div>
+
+              <div className="field item-file-field">
+                Design file
+                <div>
+                  <label className="file-input">
+                    {item.file ? item.file.name : "Choose file…"}
+                    <input
+                      type="file"
+                      onChange={(e) => updateItem(i, { file: e.target.files?.[0] ?? null })}
+                    />
+                  </label>
+                </div>
               </div>
             </div>
           ))}

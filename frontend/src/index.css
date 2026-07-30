@@ -514,13 +514,13 @@ textarea {
 
 .modal {
   width: 100%;
-  max-width: 640px;
+  max-width: 860px;
   max-height: 90vh;
   overflow-y: auto;
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  padding: 28px;
+  padding: 32px;
 }
 
 .modal-header {
@@ -549,57 +549,76 @@ textarea {
   margin: 20px 0 10px;
 }
 
-.item-row {
-  display: grid;
-  grid-template-columns: 1.6fr 0.9fr 1fr 0.6fr 0.8fr auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.item-row input {
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  font-size: 13px;
-  width: 100%;
-}
-
 .item-card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 12px;
-  margin-bottom: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
   background: var(--color-bg);
 }
 
-.item-card-footer {
+.item-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.item-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.item-card .field {
+  margin-bottom: 0;
+}
+
+/* Sign type / size / material */
+.item-grid-primary {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  margin-top: 8px;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 16px;
+}
+
+/* Quantity / price */
+.item-grid-secondary {
+  display: grid;
+  grid-template-columns: 140px 160px 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.item-description-field,
+.item-file-field {
+  margin-top: 16px;
 }
 
 .item-description {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  font-size: 13px;
+  font-size: 14px;
   width: 100%;
   background: var(--color-surface);
+  font-family: inherit;
+  resize: vertical;
 }
 
 .file-input {
   display: inline-flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px dashed var(--color-border);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-text-muted);
   background: var(--color-surface);
   cursor: pointer;
   white-space: nowrap;
-  max-width: 220px;
+  max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -618,7 +637,8 @@ textarea {
   border: none;
   color: var(--color-text-faint);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 20px;
+  line-height: 1;
 }
 
 .item-row-remove:hover {
