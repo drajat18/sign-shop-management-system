@@ -70,6 +70,17 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id/deactivate", async (req, res) => {
+  // Self-deactivation would be an instant, irreversible lockout if this
+  // admin is the shop's only one — there's no self-serve reactivate flow.
+  // Only the platform team can deactivate an admin's own account (via the
+  // platform console), precisely because that path doesn't depend on the
+  // account being deactivated still being able to act.
+  if (req.params.id === req.auth!.userId) {
+    return res.status(400).json({
+      error: "You can't deactivate your own account. Contact platform support if this account needs to be deactivated.",
+    });
+  }
+
   const user = await req.models!.User.findByIdAndUpdate(
     req.params.id,
     { active: false },

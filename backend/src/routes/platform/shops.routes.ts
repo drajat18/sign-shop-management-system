@@ -22,6 +22,70 @@ router.get("/:id", async (req, res) => {
   res.json(shop);
 });
 
+// A shop's own admin can't deactivate their own account (that would be an
+// instant, unrecoverable lockout if they're the only admin — see
+// users.routes.ts). This is the actual recovery path for that case: the
+// platform Owner can deactivate any user in any shop, including its admins.
+router.get("/:id/users", requirePlatformRole("owner", "support"), async (req, res) => {
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const { User } = getShopModels(getShopConnection(shop.id));
+  res.json(await User.find().select("-passwordHash").sort({ createdAt: -1 }));
+});
+
+router.patch("/:id/users/:userId/deactivate", requirePlatformRole("owner"), async (req, res) => {
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const platformUser = await PlatformUser.findById(req.platformAuth!.platformUserId);
+  if (!platformUser) return res.status(401).json({ error: "Invalid token" });
+
+  const { User, AuditLog } = getShopModels(getShopConnection(shop.id));
+  const user = await User.findByIdAndUpdate(
+    req.params.userId,
+    { active: false },
+    { new: true }
+  ).select("-passwordHash");
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  await AuditLog.create({
+    action: "employee_deactivated",
+    actorUserId: user._id,
+    actorEmail: platformUser.email,
+    targetId: user._id,
+    metadata: { deactivatedByPlatform: true, platformUserId: platformUser.id, platformUserName: platformUser.name },
+  });
+
+  res.json(user);
+});
+
+router.patch("/:id/users/:userId/reactivate", requirePlatformRole("owner"), async (req, res) => {
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const platformUser = await PlatformUser.findById(req.platformAuth!.platformUserId);
+  if (!platformUser) return res.status(401).json({ error: "Invalid token" });
+
+  const { User, AuditLog } = getShopModels(getShopConnection(shop.id));
+  const user = await User.findByIdAndUpdate(
+    req.params.userId,
+    { active: true },
+    { new: true }
+  ).select("-passwordHash");
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  await AuditLog.create({
+    action: "employee_reactivated",
+    actorUserId: user._id,
+    actorEmail: platformUser.email,
+    targetId: user._id,
+    metadata: { reactivatedByPlatform: true, platformUserId: platformUser.id, platformUserName: platformUser.name },
+  });
+
+  res.json(user);
+});
+
 // The whole manual-onboarding workflow, callable from the console instead
 // of needing server/CLI access.
 router.post("/", requirePlatformRole("owner", "onboarding"), async (req, res) => {

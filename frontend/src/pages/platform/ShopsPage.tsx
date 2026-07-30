@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext.js";
 import { usePlatformAuth } from "../../auth/PlatformAuthContext.js";
 import { ROLE_LANDING_PAGE } from "../../auth/roles.js";
 import type { Shop, User } from "../../types/index.js";
+import ShopDetailModal from "./ShopDetailModal.js";
 
 export default function ShopsPage() {
   const { token, user } = usePlatformAuth();
@@ -18,8 +19,10 @@ export default function ShopsPage() {
   const [created, setCreated] = useState<{ adminEmail: string; adminPassword: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [openShop, setOpenShop] = useState<Shop | null>(null);
   const canCreate = user?.role === "owner" || user?.role === "onboarding";
   const canImpersonate = user?.role === "owner" || user?.role === "support";
+  const canViewDetail = user?.role === "owner" || user?.role === "support";
 
   function loadShops() {
     apiFetch<Shop[]>("/platform/shops", { token }).then(setShops).catch(console.error);
@@ -144,7 +147,11 @@ export default function ShopsPage() {
             </thead>
             <tbody>
               {shops.map((shop) => (
-                <tr key={shop.id}>
+                <tr
+                  key={shop.id}
+                  onClick={canViewDetail ? () => setOpenShop(shop) : undefined}
+                  style={canViewDetail ? { cursor: "pointer" } : undefined}
+                >
                   <td className="cell-primary">{shop.name}</td>
                   <td className="cell-muted">{shop.planTier}</td>
                   <td>
@@ -158,7 +165,10 @@ export default function ShopsPage() {
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        onClick={() => handleImpersonate(shop.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleImpersonate(shop.id);
+                        }}
                       >
                         Impersonate
                       </button>
@@ -170,6 +180,10 @@ export default function ShopsPage() {
           </table>
         )}
       </div>
+
+      {openShop && (
+        <ShopDetailModal shopId={openShop.id} shopName={openShop.name} onClose={() => setOpenShop(null)} />
+      )}
     </div>
   );
 }
