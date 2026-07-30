@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, type InferSchemaType } from "mongoose";
 
 export const ORDER_STATUSES = [
   "new",
@@ -8,7 +8,7 @@ export const ORDER_STATUSES = [
   "completed",
 ] as const;
 
-const orderSchema = new Schema(
+export const orderSchema = new Schema(
   {
     customer: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
     dueDate: Date,
@@ -22,4 +22,3 @@ const orderSchema = new Schema(
 );
 
 export type Order = InferSchemaType<typeof orderSchema>;
-export default model("Order", orderSchema);

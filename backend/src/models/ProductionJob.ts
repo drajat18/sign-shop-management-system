@@ -1,8 +1,8 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, type InferSchemaType } from "mongoose";
 
 export const JOB_STATUSES = ["queued", "in_progress", "blocked", "done"] as const;
 
-const productionJobSchema = new Schema(
+export const productionJobSchema = new Schema(
   {
     orderItem: { type: Schema.Types.ObjectId, ref: "OrderItem", required: true },
     status: { type: String, enum: JOB_STATUSES, default: "queued" },
@@ -13,4 +13,3 @@ const productionJobSchema = new Schema(
 );
 
 export type ProductionJob = InferSchemaType<typeof productionJobSchema>;
-export default model("ProductionJob", productionJobSchema);

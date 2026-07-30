@@ -5,9 +5,11 @@ import { useAuth } from "./auth/AuthContext.js";
 import { PAGE_ACCESS, ROLE_LANDING_PAGE, canAccess } from "./auth/roles.js";
 import EmployeesPage from "./pages/admin/EmployeesPage.js";
 import SettingsPage from "./pages/admin/SettingsPage.js";
+import ForgotPassword from "./pages/ForgotPassword.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
 import Login from "./pages/Login.js";
 import JobsPage from "./pages/production/JobsPage.js";
+import ResetPassword from "./pages/ResetPassword.js";
 import type { Role } from "./types/index.js";
 
 function guarded(role: Role, allowed: Role[], element: ReactElement, landing: string) {
@@ -21,6 +23,8 @@ export default function App() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -31,6 +35,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to={landing} replace />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<AppLayout />}>
         <Route path="/orders" element={guarded(user.role, PAGE_ACCESS.orders, <OrdersPage />, landing)} />
         <Route path="/jobs" element={guarded(user.role, PAGE_ACCESS.jobs, <JobsPage />, landing)} />

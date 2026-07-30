@@ -1,13 +1,8 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
-import Customer from "../models/Customer.js";
-import Order from "../models/Order.js";
-import OrderItem from "../models/OrderItem.js";
-import ProductionJob from "../models/ProductionJob.js";
-import StatusLog from "../models/StatusLog.js";
 import { recomputeOrderTotal } from "../services/orderTotals.js";
-import { EVENTS, getIO } from "../sockets/index.js";
+import { EVENTS, emitToShop } from "../sockets/index.js";
 
 interface NewOrderItem {
   signType: string;
@@ -24,7 +19,8 @@ router.use(requireAuth);
 
 // Front desk/manager/admin create and edit orders; production can view
 // (they need the customer/due-date context behind each job they're assigned).
-router.get("/", requireRole("admin", "manager", "front_desk", "production"), async (_req, res) => {
+router.get("/", requireRole("admin", "manager", "front_desk", "production"), async (req, res) => {
+  const { Order, OrderItem } = req.models!;
   const orders = await Order.find().populate("customer").sort({ createdAt: -1 });
   const counts = await OrderItem.aggregate([{ $group: { _id: "$order", count: { $sum: 1 } } }]);
   const countByOrder = new Map(counts.map((c) => [c._id.toString(), c.count]));
@@ -41,6 +37,7 @@ router.get("/", requireRole("admin", "manager", "front_desk", "production"), asy
 // item's current production job status — this is what backs the "view
 // order" link from the Production page as well as the Orders list.
 router.get("/:id", requireRole("admin", "manager", "front_desk", "production"), async (req, res) => {
+  const { Order, OrderItem, ProductionJob } = req.models!;
   const order = await Order.findById(req.params.id).populate("customer");
   if (!order) return res.status(404).json({ error: "Order not found" });
 
@@ -61,6 +58,7 @@ router.get("/:id", requireRole("admin", "manager", "front_desk", "production"), 
 // item in a single call — that's what makes a placed order actually show
 // up on the Production page instead of orders and jobs living in silos.
 router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Customer, Order, OrderItem, ProductionJob } = req.models!;
   const { customerId, newCustomer, dueDate, description, items } = req.body as {
     customerId?: string;
     newCustomer?: { name: string; email?: string; phone?: string };
@@ -112,11 +110,11 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     orderItems.map((item) => ({ orderItem: item._id, status: "queued" }))
   );
 
-  const io = getIO();
+  const shopId = req.auth!.shopId;
   const populatedOrder = { ...order.toJSON(), customer: customer.toJSON(), itemsCount: orderItems.length };
-  io.emit(EVENTS.ORDER_CREATED, populatedOrder);
+  emitToShop(shopId, EVENTS.ORDER_CREATED, populatedOrder);
   for (const job of jobs) {
-    io.emit(EVENTS.JOB_CREATED, job.toJSON());
+    emitToShop(shopId, EVENTS.JOB_CREATED, job.toJSON());
   }
 
   res.status(201).json({ order: populatedOrder, items: orderItems, jobs });
@@ -125,6 +123,7 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
 // Adds one more line item to an order that's already been placed, with its
 // own production job — used by the order edit view's "add item" control.
 router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, OrderItem, ProductionJob } = req.models!;
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found" });
 
@@ -143,13 +142,14 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
     price,
   });
   const job = await ProductionJob.create({ orderItem: item._id, status: "queued" });
-  await recomputeOrderTotal(order.id);
+  await recomputeOrderTotal(req.models!, order.id);
 
-  getIO().emit(EVENTS.JOB_CREATED, job.toJSON());
+  emitToShop(req.auth!.shopId, EVENTS.JOB_CREATED, job.toJSON());
   res.status(201).json({ item, job });
 });
 
 router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, StatusLog } = req.models!;
   const existing = await Order.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: "Order not found" });
 
@@ -177,7 +177,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
       fromStatus: previousStatus,
       toStatus: existing.status,
     });
-    getIO().emit(EVENTS.ORDER_UPDATED, existing);
+    emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, existing);
   }
 
   res.json(existing);

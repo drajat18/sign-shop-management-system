@@ -1,6 +1,6 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, type InferSchemaType } from "mongoose";
 
-const statusLogSchema = new Schema(
+export const statusLogSchema = new Schema(
   {
     entityType: { type: String, enum: ["order", "production_job"], required: true },
     entityId: { type: Schema.Types.ObjectId, required: true },
@@ -12,4 +12,3 @@ const statusLogSchema = new Schema(
 );
 
 export type StatusLog = InferSchemaType<typeof statusLogSchema>;
-export default model("StatusLog", statusLogSchema);

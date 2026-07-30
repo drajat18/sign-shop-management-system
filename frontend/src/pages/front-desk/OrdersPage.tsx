@@ -23,8 +23,10 @@ export default function OrdersPage() {
     loadOrders();
 
     // Live updates so a status change made elsewhere (or a new order placed
-    // from another front-desk terminal) shows up here without polling.
-    const socket = io(API_URL);
+    // from another front-desk terminal) shows up here without polling. The
+    // token is required — the server uses it to put this connection in the
+    // right shop's room so updates never cross tenant boundaries.
+    const socket = io(API_URL, { auth: { token } });
     socket.on("order:created", () => loadOrders());
     socket.on("order:updated", (updated: Order) => {
       setOrders((prev) => (prev ? prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)) : prev));

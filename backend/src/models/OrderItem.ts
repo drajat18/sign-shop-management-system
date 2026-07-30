@@ -1,6 +1,6 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, type InferSchemaType } from "mongoose";
 
-const orderItemSchema = new Schema(
+export const orderItemSchema = new Schema(
   {
     order: { type: Schema.Types.ObjectId, ref: "Order", required: true },
     signType: { type: String, required: true },
@@ -15,4 +15,3 @@ const orderItemSchema = new Schema(
 );
 
 export type OrderItem = InferSchemaType<typeof orderItemSchema>;
-export default model("OrderItem", orderItemSchema);

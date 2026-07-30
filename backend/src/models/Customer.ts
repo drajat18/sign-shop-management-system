@@ -1,6 +1,6 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, type InferSchemaType } from "mongoose";
 
-const customerSchema = new Schema(
+export const customerSchema = new Schema(
   {
     name: { type: String, required: true },
     email: String,
@@ -11,4 +11,3 @@ const customerSchema = new Schema(
 );
 
 export type Customer = InferSchemaType<typeof customerSchema>;
-export default model("Customer", customerSchema);

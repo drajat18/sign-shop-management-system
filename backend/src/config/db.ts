@@ -17,6 +17,10 @@ export function getMongoUri(uri?: string): string {
   return configuredUri;
 }
 
+// The default Mongoose connection is reserved for the platform database
+// (shop registry, platform team, the email->shop login index) — every
+// shop's actual data lives in its own database via a separate connection
+// from services/shopConnection.ts.
 export async function connectDB(uri?: string): Promise<void> {
-  await mongoose.connect(getMongoUri(uri));
+  await mongoose.connect(getMongoUri(uri), { dbName: "platform" });
 }

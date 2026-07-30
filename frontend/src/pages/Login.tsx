@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { ROLE_LANDING_PAGE } from "../auth/roles.js";
@@ -66,6 +66,11 @@ export default function Login() {
           <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
             {submitting ? "Logging in…" : "Log in"}
           </button>
+          <p style={{ textAlign: "center", marginTop: 16, fontSize: 13 }}>
+            <Link to="/forgot-password" style={{ color: "var(--color-primary)" }}>
+              Forgot password?
+            </Link>
+          </p>
         </form>
       </div>
     </div>

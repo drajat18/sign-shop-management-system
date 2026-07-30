@@ -29,8 +29,10 @@ export default function JobsPage() {
     }
 
     // Live updates so a status change at another station (or a newly
-    // placed order) shows up here without polling.
-    const socket = io(API_URL);
+    // placed order) shows up here without polling. The token is required —
+    // the server uses it to put this connection in the right shop's room
+    // so updates never cross tenant boundaries.
+    const socket = io(API_URL, { auth: { token } });
     socket.on("job:updated", (updated: ProductionJob) => {
       setJobs((prev) => (prev ? prev.map((j) => (j.id === updated.id ? updated : j)) : prev));
     });

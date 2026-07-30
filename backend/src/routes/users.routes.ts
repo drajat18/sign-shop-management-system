@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
-import User from "../models/User.js";
+import ShopUserIndex from "../models/platform/ShopUserIndex.js";
 import { ROLES } from "../types/roles.js";
 
 const router = Router();
@@ -12,16 +12,16 @@ router.use(requireAuth);
 // Manager needs to know who's on production to reassign jobs, but
 // full employee management (with email, active flag, create/deactivate)
 // stays admin-only per the design doc.
-router.get("/production", requireRole("admin", "manager"), async (_req, res) => {
-  const users = await User.find({ role: "production", active: true }).select("name");
+router.get("/production", requireRole("admin", "manager"), async (req, res) => {
+  const users = await req.models!.User.find({ role: "production", active: true }).select("name");
   res.json(users);
 });
 
 // Admin only from here down: manage employees, deactivate to instantly revoke access.
 router.use(requireRole("admin"));
 
-router.get("/", async (_req, res) => {
-  const users = await User.find().select("-passwordHash").sort({ createdAt: -1 });
+router.get("/", async (req, res) => {
+  const users = await req.models!.User.find().select("-passwordHash").sort({ createdAt: -1 });
   res.json(users);
 });
 
@@ -46,18 +46,43 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "password must be at least 8 characters" });
   }
 
+  const normalizedEmail = email.toLowerCase();
+
+  // Email identifies which shop a login belongs to platform-wide, so it
+  // has to be unique across every shop, not just within this one.
+  const existingIndex = await ShopUserIndex.findOne({ email: normalizedEmail });
+  if (existingIndex) {
+    return res.status(409).json({ error: "That email is already in use on another account" });
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email: email.toLowerCase(), passwordHash, role });
+  const user = await req.models!.User.create({ name, email: normalizedEmail, passwordHash, role });
+  await ShopUserIndex.create({ email: normalizedEmail, shopId: req.auth!.shopId });
+  await req.models!.AuditLog.create({
+    action: "employee_created",
+    actorUserId: req.auth!.userId,
+    targetId: user._id,
+    metadata: { role },
+  });
 
   const { passwordHash: _omit, ...safeUser } = user.toJSON();
   res.status(201).json(safeUser);
 });
 
 router.patch("/:id/deactivate", async (req, res) => {
-  const user = await User.findByIdAndUpdate(req.params.id, { active: false }, { new: true }).select(
-    "-passwordHash"
-  );
+  const user = await req.models!.User.findByIdAndUpdate(
+    req.params.id,
+    { active: false },
+    { new: true }
+  ).select("-passwordHash");
   if (!user) return res.status(404).json({ error: "User not found" });
+
+  await req.models!.AuditLog.create({
+    action: "employee_deactivated",
+    actorUserId: req.auth!.userId,
+    targetId: user._id,
+  });
+
   res.json(user);
 });
 

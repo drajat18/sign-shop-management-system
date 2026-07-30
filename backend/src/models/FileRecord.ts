@@ -1,6 +1,6 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import { Schema, type InferSchemaType } from "mongoose";
 
-const fileRecordSchema = new Schema(
+export const fileRecordSchema = new Schema(
   {
     storageProvider: { type: String, enum: ["internal", "dropbox"], required: true },
     // Internal storage: object key. Dropbox: file path in the shop's connected account.
@@ -13,4 +13,3 @@ const fileRecordSchema = new Schema(
 );
 
 export type FileRecord = InferSchemaType<typeof fileRecordSchema>;
-export default model("FileRecord", fileRecordSchema);
