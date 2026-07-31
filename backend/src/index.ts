@@ -21,10 +21,17 @@ import platformShopsRoutes from "./routes/platform/shops.routes.js";
 import platformTeamRoutes from "./routes/platform/team.routes.js";
 import portalRoutes from "./routes/portal.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
+import stripeWebhookRoutes from "./routes/stripeWebhook.routes.js";
 import usersRoutes from "./routes/users.routes.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN }));
+
+// Mounted with a raw-body parser, and before the global express.json()
+// below, since Stripe's webhook signature is computed over the exact bytes
+// it sent — a JSON-parsed-then-re-stringified body would fail verification.
+app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRoutes);
+
 // Design files are uploaded as base64 in the JSON body, which inflates
 // size by ~33% — 25mb here caps real uploads around 18mb.
 app.use(express.json({ limit: "25mb" }));

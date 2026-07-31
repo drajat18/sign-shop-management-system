@@ -4,7 +4,8 @@ import { requirePlatformAuth } from "../../middleware/platformAuth.js";
 import { requirePlatformRole } from "../../middleware/requirePlatformRole.js";
 import { getShopModels } from "../../models/shopModels.js";
 import PlatformUser from "../../models/platform/PlatformUser.js";
-import Shop from "../../models/platform/Shop.js";
+import Shop, { PLAN_TIERS, type PlanTier } from "../../models/platform/Shop.js";
+import { getStripe, priceIdForTier, STRIPE_CONFIGURED } from "../../services/billing/stripe.js";
 import { provisionShop } from "../../services/provisionShop.js";
 import { getShopConnection } from "../../services/shopConnection.js";
 
@@ -144,6 +145,46 @@ router.post("/:id/impersonate", requirePlatformRole("owner", "support"), async (
     user: { id: adminUser.id, name: adminUser.name, role: adminUser.role },
     shop: { id: shop.id, name: shop.name },
   });
+});
+
+// Generates a Stripe-hosted Checkout link for a shop to subscribe to (or
+// switch to) a given plan tier — the platform team copies this to send to
+// the shop directly, same shape as the customer-portal link generator.
+// Nothing on our side is charged or activated until Stripe's webhook
+// confirms the checkout actually completed.
+router.post("/:id/billing-link", requirePlatformRole("owner", "billing"), async (req, res) => {
+  if (!STRIPE_CONFIGURED) {
+    return res.status(400).json({ error: "Billing isn't configured yet — set STRIPE_SECRET_KEY on the server." });
+  }
+
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const { planTier } = req.body as { planTier?: string };
+  if (!planTier || !PLAN_TIERS.includes(planTier as PlanTier)) {
+    return res.status(400).json({ error: `planTier must be one of: ${PLAN_TIERS.join(", ")}` });
+  }
+
+  let priceId: string;
+  try {
+    priceId = priceIdForTier(planTier as PlanTier);
+  } catch (err) {
+    return res.status(400).json({ error: (err as Error).message });
+  }
+
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    customer: shop.stripeCustomerId || undefined,
+    client_reference_id: shop.id,
+    metadata: { shopId: shop.id, planTier },
+    subscription_data: { metadata: { shopId: shop.id, planTier } },
+    success_url: `${process.env.FRONTEND_URL}/login?billing=success`,
+    cancel_url: `${process.env.FRONTEND_URL}/login?billing=cancelled`,
+  });
+
+  res.json({ url: session.url });
 });
 
 export default router;
