@@ -1,8 +1,11 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { recomputeOrderTotal } from "../services/orderTotals.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
+
+const PORTAL_LINK_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 interface NewOrderItem {
   signType: string;
@@ -153,18 +156,21 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   const existing = await Order.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: "Order not found" });
 
-  const { status, dueDate, paymentStatus, description } = req.body as {
+  const { status, dueDate, paymentStatus, description, customerComment } = req.body as {
     status?: string;
     dueDate?: string;
     paymentStatus?: string;
     description?: string;
+    customerComment?: string;
   };
 
   const previousStatus = existing.status;
   Object.assign(
     existing,
     Object.fromEntries(
-      Object.entries({ status, dueDate, paymentStatus, description }).filter(([, v]) => v !== undefined)
+      Object.entries({ status, dueDate, paymentStatus, description, customerComment }).filter(
+        ([, v]) => v !== undefined
+      )
     )
   );
   await existing.save();
@@ -181,6 +187,30 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   }
 
   res.json(existing);
+});
+
+// Returns a shareable customer-portal link for this order, creating one if
+// none exists yet (or the previous one expired). Reusing the same link on
+// repeat calls means re-copying it for the customer never breaks a copy
+// they may have already bookmarked.
+router.post("/:id/portal-link", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, CustomerPortalToken } = req.models!;
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  let tokenRecord = await CustomerPortalToken.findOne({
+    order: order._id,
+    expiresAt: { $gt: new Date() },
+  });
+  if (!tokenRecord) {
+    tokenRecord = await CustomerPortalToken.create({
+      order: order._id,
+      token: crypto.randomBytes(24).toString("base64url"),
+      expiresAt: new Date(Date.now() + PORTAL_LINK_TTL_MS),
+    });
+  }
+
+  res.json({ url: `${process.env.FRONTEND_URL}/portal/${req.auth!.shopId}/${tokenRecord.token}` });
 });
 
 export default router;

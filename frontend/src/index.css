@@ -716,3 +716,27 @@ textarea {
     padding: 20px;
   }
 }
+
+/* ---------- Print (job tickets) ---------- */
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #job-ticket-print,
+  #job-ticket-print * {
+    visibility: visible;
+  }
+
+  #job-ticket-print {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

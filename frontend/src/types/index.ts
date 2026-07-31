@@ -39,6 +39,7 @@ export interface Order {
   total: number;
   paymentStatus: "unpaid" | "partial" | "paid";
   itemsCount: number;
+  customerComment?: string;
 }
 
 export interface ArtworkFile {
@@ -104,6 +105,38 @@ export interface Shop {
   subscriptionStatus: SubscriptionStatus;
   active: boolean;
   createdAt: string;
+}
+
+export interface PortalOrderItem {
+  id: string;
+  signType: string;
+  size?: string;
+  material?: string;
+  description?: string;
+  quantity: number;
+  price: number;
+  artworkFile?: { id: string; fileName: string } | null;
+}
+
+export interface PortalOrder {
+  id: string;
+  customerName?: string;
+  status: OrderStatus;
+  dueDate?: string;
+  description?: string;
+  total: number;
+  paymentStatus: string;
+  customerComment?: string;
+  items: PortalOrderItem[];
+}
+
+export interface ReportsSummary {
+  totalOrders: number;
+  totalOrderValue: number;
+  paidRevenue: number;
+  ordersByStatus: Record<string, number>;
+  avgTurnaroundDays: number | null;
+  jobsByEmployee: { name: string; count: number }[];
 }
 
 export interface ProductionJob {

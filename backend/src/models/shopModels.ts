@@ -1,6 +1,7 @@
 import type { Connection, Model } from "mongoose";
 import { auditLogSchema, type AuditLog } from "./AuditLog.js";
 import { customerSchema, type Customer } from "./Customer.js";
+import { customerPortalTokenSchema, type CustomerPortalToken } from "./CustomerPortalToken.js";
 import { fileRecordSchema, type FileRecord } from "./FileRecord.js";
 import { orderSchema, type Order } from "./Order.js";
 import { orderItemSchema, type OrderItem } from "./OrderItem.js";
@@ -19,6 +20,7 @@ export interface ShopModels {
   FileRecord: Model<FileRecord>;
   AuditLog: Model<AuditLog>;
   PasswordResetToken: Model<PasswordResetToken>;
+  CustomerPortalToken: Model<CustomerPortalToken>;
 }
 
 const registry = new WeakMap<Connection, ShopModels>();
@@ -42,6 +44,10 @@ export function getShopModels(connection: Connection): ShopModels {
     PasswordResetToken: connection.model<PasswordResetToken>(
       "PasswordResetToken",
       passwordResetTokenSchema
+    ),
+    CustomerPortalToken: connection.model<CustomerPortalToken>(
+      "CustomerPortalToken",
+      customerPortalTokenSchema
     ),
   };
   registry.set(connection, models);

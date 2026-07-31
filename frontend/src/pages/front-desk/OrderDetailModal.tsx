@@ -41,6 +41,7 @@ export default function OrderDetailModal({
   const [showAddItem, setShowAddItem] = useState(false);
   const [newItem, setNewItem] = useState<NewOrderItemInput>(emptyItem());
   const [busy, setBusy] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   function loadOrder() {
     apiFetch<OrderDetail>(`/orders/${orderId}`, { token })
@@ -80,6 +81,20 @@ export default function OrderDetailModal({
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleCopyPortalLink() {
+    try {
+      const { url } = await apiFetch<{ url: string }>(`/orders/${orderId}/portal-link`, {
+        method: "POST",
+        token,
+      });
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate link");
     }
   }
 
@@ -126,10 +141,49 @@ export default function OrderDetailModal({
                   {order.customer?.phone}
                 </p>
               </div>
-              <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-                ×
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {editable && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={handleCopyPortalLink}
+                  >
+                    {linkCopied ? "Link copied!" : "Copy customer link"}
+                  </button>
+                )}
+                <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+                  ×
+                </button>
+              </div>
             </div>
+
+            {order.customerComment && (
+              <div
+                className="form-error"
+                style={{
+                  background: "var(--color-warning-soft)",
+                  color: "var(--color-warning)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 12,
+                }}
+              >
+                <span>
+                  <strong>Customer requested changes:</strong> {order.customerComment}
+                </span>
+                {editable && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ flexShrink: 0 }}
+                    onClick={() => patchOrder({ customerComment: "" })}
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
               <label className="field">

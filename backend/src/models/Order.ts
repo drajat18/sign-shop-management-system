@@ -17,6 +17,10 @@ export const orderSchema = new Schema(
     total: { type: Number, default: 0 },
     paymentStatus: { type: String, enum: ["unpaid", "partial", "paid"], default: "unpaid" },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    // Latest "request changes" note left by the customer via their portal
+    // link — a single field rather than a thread, cleared by staff once
+    // addressed via the same PATCH used for every other order field.
+    customerComment: String,
   },
   { timestamps: true }
 );

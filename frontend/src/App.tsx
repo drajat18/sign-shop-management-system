@@ -6,6 +6,7 @@ import { useAuth } from "./auth/AuthContext.js";
 import { usePlatformAuth } from "./auth/PlatformAuthContext.js";
 import { PAGE_ACCESS, ROLE_LANDING_PAGE, canAccess } from "./auth/roles.js";
 import EmployeesPage from "./pages/admin/EmployeesPage.js";
+import ReportsPage from "./pages/admin/ReportsPage.js";
 import SettingsPage from "./pages/admin/SettingsPage.js";
 import ForgotPassword from "./pages/ForgotPassword.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
@@ -13,7 +14,9 @@ import Login from "./pages/Login.js";
 import PlatformLogin from "./pages/platform/PlatformLogin.js";
 import ShopsPage from "./pages/platform/ShopsPage.js";
 import TeamPage from "./pages/platform/TeamPage.js";
+import CustomerPortalPage from "./pages/portal/CustomerPortalPage.js";
 import JobsPage from "./pages/production/JobsPage.js";
+import ScanJobPage from "./pages/production/ScanJobPage.js";
 import ResetPassword from "./pages/ResetPassword.js";
 import type { Role } from "./types/index.js";
 
@@ -24,6 +27,11 @@ function guarded(role: Role, allowed: Role[], element: ReactElement, landing: st
 export default function App() {
   const { user } = useAuth();
   const { user: platformUser } = usePlatformAuth();
+
+  // Fully public, no auth of any kind — a customer's link is the only
+  // credential. Needs to work whether or not this browser also happens to
+  // have an employee or platform session active.
+  const publicRoutes = <Route path="/portal/:shopId/:token" element={<CustomerPortalPage />} />;
 
   // The platform console lives at /platform/* independent of any shop
   // session — a platform team member doesn't need to be (and usually
@@ -50,6 +58,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        {publicRoutes}
         {platformRoutes}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
@@ -63,11 +72,17 @@ export default function App() {
       <Route path="/login" element={<Navigate to={landing} replace />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      {publicRoutes}
       {platformRoutes}
+      <Route
+        path="/scan/job/:jobId"
+        element={guarded(user.role, PAGE_ACCESS.jobs, <ScanJobPage />, landing)}
+      />
       <Route element={<AppLayout />}>
         <Route path="/orders" element={guarded(user.role, PAGE_ACCESS.orders, <OrdersPage />, landing)} />
         <Route path="/jobs" element={guarded(user.role, PAGE_ACCESS.jobs, <JobsPage />, landing)} />
         <Route path="/employees" element={guarded(user.role, PAGE_ACCESS.employees, <EmployeesPage />, landing)} />
+        <Route path="/reports" element={guarded(user.role, PAGE_ACCESS.reports, <ReportsPage />, landing)} />
         <Route path="/admin" element={guarded(user.role, PAGE_ACCESS.settings, <SettingsPage />, landing)} />
       </Route>
       <Route path="*" element={<Navigate to={landing} replace />} />

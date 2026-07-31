@@ -19,6 +19,8 @@ import ordersRoutes from "./routes/orders.routes.js";
 import platformAuthRoutes from "./routes/platform/auth.routes.js";
 import platformShopsRoutes from "./routes/platform/shops.routes.js";
 import platformTeamRoutes from "./routes/platform/team.routes.js";
+import portalRoutes from "./routes/portal.routes.js";
+import reportsRoutes from "./routes/reports.routes.js";
 import usersRoutes from "./routes/users.routes.js";
 
 const app = express();
@@ -39,6 +41,8 @@ app.use("/api/files", filesRoutes);
 app.use("/api/platform/auth", platformAuthRoutes);
 app.use("/api/platform/team", platformTeamRoutes);
 app.use("/api/platform/shops", platformShopsRoutes);
+app.use("/api/portal/:shopId", portalRoutes);
+app.use("/api/reports", reportsRoutes);
 
 // Catches errors forwarded by express-async-errors (and anything passed to
 // next(err) directly) so a failed request returns a normal 500 instead of

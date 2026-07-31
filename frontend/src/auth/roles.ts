@@ -7,6 +7,7 @@ export const PAGE_ACCESS = {
   jobs: ["admin", "manager", "production"] as Role[],
   employees: ["admin"] as Role[],
   settings: ["admin"] as Role[],
+  reports: ["admin"] as Role[],
 };
 
 export const ROLE_LANDING_PAGE: Record<Role, string> = {
@@ -20,6 +21,7 @@ export const NAV_ITEMS: { to: string; label: string; roles: Role[] }[] = [
   { to: "/orders", label: "Orders", roles: PAGE_ACCESS.orders },
   { to: "/jobs", label: "Production", roles: PAGE_ACCESS.jobs },
   { to: "/employees", label: "Employees", roles: PAGE_ACCESS.employees },
+  { to: "/reports", label: "Reports", roles: PAGE_ACCESS.reports },
   { to: "/admin", label: "Settings", roles: PAGE_ACCESS.settings },
 ];
 

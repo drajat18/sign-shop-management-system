@@ -4,6 +4,7 @@ import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { JobStatusBadge } from "../../components/StatusBadge.js";
 import OrderDetailModal from "../front-desk/OrderDetailModal.js";
+import JobTicketModal from "./JobTicketModal.js";
 import type { JobStatus, ProductionJob } from "../../types/index.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
@@ -14,6 +15,7 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<ProductionJob[] | null>(null);
   const [assignable, setAssignable] = useState<{ id: string; name: string }[]>([]);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [ticketJob, setTicketJob] = useState<ProductionJob | null>(null);
   const canReassign = user?.role === "admin" || user?.role === "manager";
 
   function loadJobs() {
@@ -152,13 +154,20 @@ export default function JobsPage() {
                       onFocus={(e) => (e.target.style.border = "1px solid var(--color-border)")}
                     />
                   </td>
-                  <td>
+                  <td style={{ display: "flex", gap: 8 }}>
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
                       onClick={() => setOpenOrderId(job.orderItem.order.id)}
                     >
                       View order
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => setTicketJob(job)}
+                    >
+                      Print ticket
                     </button>
                   </td>
                 </tr>
@@ -176,6 +185,8 @@ export default function JobsPage() {
           onChanged={loadJobs}
         />
       )}
+
+      {ticketJob && <JobTicketModal job={ticketJob} onClose={() => setTicketJob(null)} />}
     </div>
   );
 }

@@ -24,6 +24,22 @@ router.get("/", requireRole("admin", "manager", "production"), async (req, res) 
   res.json(jobs);
 });
 
+// Single-job fetch backs the QR-scan page — same assignment restriction as
+// the list, so scanning someone else's job ticket doesn't leak its details.
+router.get("/:id", requireRole("admin", "manager", "production"), async (req, res) => {
+  const { ProductionJob } = req.models!;
+  const job = await ProductionJob.findById(req.params.id);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+
+  if (req.auth!.role === "production" && job.assignedTo?.toString() !== req.auth!.userId) {
+    return res.status(403).json({ error: "Not assigned to this job" });
+  }
+
+  await job.populate(JOB_POPULATE);
+  await job.populate("assignedTo", "name");
+  res.json(job);
+});
+
 // Production updates status/notes on jobs assigned to them; managers/admins
 // can also reassign — that's the one field production can't touch.
 router.patch("/:id", requireRole("admin", "manager", "production"), async (req, res) => {
