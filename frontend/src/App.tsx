@@ -11,6 +11,8 @@ import SettingsPage from "./pages/admin/SettingsPage.js";
 import ForgotPassword from "./pages/ForgotPassword.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
 import Login from "./pages/Login.js";
+import DummyChargePage from "./pages/payments/DummyChargePage.js";
+import DummyConnectPage from "./pages/payments/DummyConnectPage.js";
 import DummyCheckoutPage from "./pages/platform/DummyCheckoutPage.js";
 import PlatformLogin from "./pages/platform/PlatformLogin.js";
 import ShopsPage from "./pages/platform/ShopsPage.js";
@@ -36,6 +38,8 @@ export default function App() {
     <>
       <Route path="/portal/:shopId/:token" element={<CustomerPortalPage />} />
       <Route path="/billing/dummy-checkout/:token" element={<DummyCheckoutPage />} />
+      <Route path="/payments/dummy-connect/:token" element={<DummyConnectPage />} />
+      <Route path="/payments/dummy-charge/:token" element={<DummyChargePage />} />
     </>
   );
 

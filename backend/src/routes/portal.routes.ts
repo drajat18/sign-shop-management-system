@@ -87,6 +87,7 @@ router.post("/:token/approve", async (req, res) => {
     action: "customer_approved_design",
     targetId: order._id,
   });
+  await order.populate("customer");
   emitToShop((req.params as unknown as { shopId: string }).shopId, EVENTS.ORDER_UPDATED, order);
 
   res.json({ message: "Design approved — thank you! We'll get started on production." });
@@ -111,6 +112,7 @@ router.post("/:token/comment", async (req, res) => {
     targetId: order._id,
     metadata: { comment: comment.trim() },
   });
+  await order.populate("customer");
   emitToShop((req.params as unknown as { shopId: string }).shopId, EVENTS.ORDER_UPDATED, order);
 
   res.json({ message: "Thanks — we've received your note and will follow up." });

@@ -2,7 +2,9 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
+import { getStripe } from "../services/billing/stripe.js";
 import { recomputeOrderTotal } from "../services/orderTotals.js";
+import { signChargeLinkToken } from "../services/paymentOAuth/state.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
 
 const PORTAL_LINK_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
@@ -185,6 +187,10 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
       toStatus: existing.status,
     });
   }
+  // Populated before emitting — other open tabs merge this straight into
+  // their order list state (see OrdersPage's socket handler), so an
+  // unpopulated customer ref would blank out the customer name there.
+  await existing.populate("customer");
   // Emitted unconditionally (not just on status change) so other open tabs —
   // notably the Production page, which shows a customer-response badge —
   // pick up edits like a staff member dismissing that badge.
@@ -215,6 +221,55 @@ router.post("/:id/portal-link", requireRole("admin", "manager", "front_desk"), a
   }
 
   res.json({ url: `${process.env.FRONTEND_URL}/portal/${req.auth!.shopId}/${tokenRecord.token}` });
+});
+
+// Returns a payment link for this order, charged through the shop's own
+// connected payment processor — the platform never touches this money.
+// Falls back to a dummy payment link when the shop's connection (or the
+// platform's Stripe Connect setup) is still a test one, same "configured
+// vs connected" split used everywhere else in this app's integrations.
+router.post("/:id/charge-link", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, PaymentConnection } = req.models!;
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  const { amount } = req.body as { amount?: number };
+  const chargeAmount = typeof amount === "number" && amount > 0 ? amount : order.total;
+
+  const connection = await PaymentConnection.findOne({ provider: "stripe" });
+  if (!connection) {
+    return res
+      .status(400)
+      .json({ error: "Connect a payment processor in Settings before charging a customer." });
+  }
+
+  if (connection.connectedAccountId.startsWith("dummy_acct_")) {
+    const token = signChargeLinkToken({ shopId: req.auth!.shopId, orderId: order.id, amount: chargeAmount });
+    return res.json({ url: `${process.env.FRONTEND_URL}/payments/dummy-charge/${token}`, mode: "dummy" });
+  }
+
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: Math.round(chargeAmount * 100),
+            product_data: { name: "Order payment" },
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: { shopId: req.auth!.shopId, orderId: order.id },
+      success_url: `${process.env.FRONTEND_URL}/login?payment=success`,
+      cancel_url: `${process.env.FRONTEND_URL}/login?payment=cancelled`,
+    },
+    { stripeAccount: connection.connectedAccountId }
+  );
+
+  res.json({ url: session.url, mode: "stripe" });
 });
 
 export default router;

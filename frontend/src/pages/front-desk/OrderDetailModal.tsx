@@ -7,6 +7,8 @@ import type {
   NewOrderItemInput,
   OrderDetail,
   OrderStatus,
+  PaymentConnectionStatus,
+  PaymentOAuthProvider,
   StorageConnectionStatus,
   StorageOAuthProvider,
   StorageProvider,
@@ -57,6 +59,10 @@ export default function OrderDetailModal({
   const [storageOptions, setStorageOptions] = useState<StorageProvider[]>(["internal"]);
   const [busy, setBusy] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [paymentConnected, setPaymentConnected] = useState(false);
+  const [chargeAmount, setChargeAmount] = useState<number | null>(null);
+  const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
 
   function loadOrder() {
     apiFetch<OrderDetail>(`/orders/${orderId}`, { token })
@@ -67,6 +73,10 @@ export default function OrderDetailModal({
   useEffect(loadOrder, [orderId, token]);
 
   useEffect(() => {
+    if (order && chargeAmount === null) setChargeAmount(order.total);
+  }, [order, chargeAmount]);
+
+  useEffect(() => {
     if (!editable) return;
     apiFetch<Record<StorageOAuthProvider, StorageConnectionStatus>>("/settings/storage", { token })
       .then((status) => {
@@ -74,6 +84,11 @@ export default function OrderDetailModal({
           (p) => status[p].connected
         );
         setStorageOptions(["internal", ...connected]);
+      })
+      .catch(console.error);
+    apiFetch<Record<PaymentOAuthProvider, PaymentConnectionStatus>>("/settings/payments", { token })
+      .then((status) => {
+        setPaymentConnected((Object.keys(status) as PaymentOAuthProvider[]).some((p) => status[p].connected));
       })
       .catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,6 +138,25 @@ export default function OrderDetailModal({
       setTimeout(() => setLinkCopied(false), 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate link");
+    }
+  }
+
+  async function handleCopyPaymentLink() {
+    setPaymentBusy(true);
+    setError(null);
+    try {
+      const { url } = await apiFetch<{ url: string }>(`/orders/${orderId}/charge-link`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ amount: chargeAmount }),
+      });
+      await navigator.clipboard.writeText(url);
+      setPaymentLinkCopied(true);
+      setTimeout(() => setPaymentLinkCopied(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate payment link");
+    } finally {
+      setPaymentBusy(false);
     }
   }
 
@@ -276,6 +310,31 @@ export default function OrderDetailModal({
                 )}
               </label>
             </div>
+
+            {editable && paymentConnected && order.paymentStatus !== "paid" && (
+              <div
+                style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: 16 }}
+              >
+                <label className="field" style={{ maxWidth: 160 }}>
+                  Charge amount
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={chargeAmount ?? order.total}
+                    onChange={(e) => setChargeAmount(Number(e.target.value) || 0)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={handleCopyPaymentLink}
+                  disabled={paymentBusy}
+                >
+                  {paymentLinkCopied ? "Link copied!" : paymentBusy ? "Generating…" : "Copy payment link"}
+                </button>
+              </div>
+            )}
 
             <label className="field">
               Order notes

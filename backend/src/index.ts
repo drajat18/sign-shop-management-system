@@ -17,13 +17,17 @@ import filesRoutes from "./routes/files.routes.js";
 import jobsRoutes from "./routes/jobs.routes.js";
 import orderItemsRoutes from "./routes/orderItems.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
+import paymentOAuthCallbackRoutes from "./routes/paymentOAuthCallback.routes.js";
+import paymentsDummyRoutes from "./routes/paymentsDummy.routes.js";
 import platformAuthRoutes from "./routes/platform/auth.routes.js";
 import platformShopsRoutes from "./routes/platform/shops.routes.js";
 import platformTeamRoutes from "./routes/platform/team.routes.js";
 import portalRoutes from "./routes/portal.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
+import settingsPaymentsRoutes from "./routes/settingsPayments.routes.js";
 import settingsStorageRoutes from "./routes/settingsStorage.routes.js";
 import storageOAuthCallbackRoutes from "./routes/storageOAuthCallback.routes.js";
+import stripeConnectWebhookRoutes from "./routes/stripeConnectWebhook.routes.js";
 import stripeWebhookRoutes from "./routes/stripeWebhook.routes.js";
 import usersRoutes from "./routes/users.routes.js";
 
@@ -34,6 +38,11 @@ app.use(cors({ origin: process.env.CORS_ORIGIN }));
 // below, since Stripe's webhook signature is computed over the exact bytes
 // it sent — a JSON-parsed-then-re-stringified body would fail verification.
 app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhookRoutes);
+app.use(
+  "/api/webhooks/stripe-connect",
+  express.raw({ type: "application/json" }),
+  stripeConnectWebhookRoutes
+);
 
 // Design files are uploaded as base64 in the JSON body, which inflates
 // size by ~33% — 25mb here caps real uploads around 18mb.
@@ -56,6 +65,9 @@ app.use("/api/billing/dummy-checkout", billingDummyRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/settings/storage", settingsStorageRoutes);
 app.use("/api/storage-oauth", storageOAuthCallbackRoutes);
+app.use("/api/settings/payments", settingsPaymentsRoutes);
+app.use("/api/payment-oauth", paymentOAuthCallbackRoutes);
+app.use("/api/payments", paymentsDummyRoutes);
 
 // Catches errors forwarded by express-async-errors (and anything passed to
 // next(err) directly) so a failed request returns a normal 500 instead of

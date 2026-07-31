@@ -2,14 +2,24 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
-import type { StorageConnectionStatus, StorageOAuthProvider } from "../../types/index.js";
+import type {
+  PaymentConnectionStatus,
+  PaymentOAuthProvider,
+  StorageConnectionStatus,
+  StorageOAuthProvider,
+} from "../../types/index.js";
 
 const PROVIDER_LABEL: Record<StorageOAuthProvider, string> = {
   dropbox: "Dropbox",
   google_drive: "Google Drive",
 };
 
+const PAYMENT_PROVIDER_LABEL: Record<PaymentOAuthProvider, string> = {
+  stripe: "Stripe",
+};
+
 type StatusResponse = Record<StorageOAuthProvider, StorageConnectionStatus>;
+type PaymentStatusResponse = Record<PaymentOAuthProvider, PaymentConnectionStatus>;
 
 // Shop-level Dropbox/Google Drive connection + employee management live
 // here. Design doc: "Settings shows connected/disconnected status clearly
@@ -67,6 +77,58 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to disconnect");
     } finally {
       setBusyProvider(null);
+    }
+  }
+
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusResponse | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [busyPaymentProvider, setBusyPaymentProvider] = useState<PaymentOAuthProvider | null>(null);
+
+  function loadPaymentStatus() {
+    apiFetch<PaymentStatusResponse>("/settings/payments", { token })
+      .then(setPaymentStatus)
+      .catch(console.error);
+  }
+
+  useEffect(loadPaymentStatus, [token]);
+
+  const paymentRedirectResult = searchParams.get("payments");
+  const paymentRedirectProvider = searchParams.get("provider") as PaymentOAuthProvider | null;
+  const paymentRedirectMessage = searchParams.get("message");
+
+  useEffect(() => {
+    if (paymentRedirectResult) {
+      loadPaymentStatus();
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentRedirectResult]);
+
+  async function handleConnectPayment(provider: PaymentOAuthProvider) {
+    setPaymentError(null);
+    setBusyPaymentProvider(provider);
+    try {
+      const { url } = await apiFetch<{ url: string }>(`/settings/payments/${provider}/connect`, {
+        method: "POST",
+        token,
+      });
+      window.location.href = url;
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : "Failed to start connection");
+      setBusyPaymentProvider(null);
+    }
+  }
+
+  async function handleDisconnectPayment(provider: PaymentOAuthProvider) {
+    setPaymentError(null);
+    setBusyPaymentProvider(provider);
+    try {
+      await apiFetch(`/settings/payments/${provider}/disconnect`, { method: "POST", token });
+      loadPaymentStatus();
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : "Failed to disconnect");
+    } finally {
+      setBusyPaymentProvider(null);
     }
   }
 
@@ -154,6 +216,91 @@ export default function SettingsPage() {
                       disabled={busyProvider === provider}
                     >
                       {busyProvider === provider ? "Redirecting…" : `Connect ${label}`}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 24, marginTop: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Payments</h2>
+        <p className="cell-muted" style={{ marginBottom: 16 }}>
+          Connect your own Stripe account to collect payment directly from customers — the platform
+          never touches this money.
+        </p>
+
+        {paymentRedirectResult === "connected" && paymentRedirectProvider && (
+          <p className="cell-muted" style={{ marginBottom: 16, color: "var(--color-success)" }}>
+            {PAYMENT_PROVIDER_LABEL[paymentRedirectProvider]} connected.
+          </p>
+        )}
+        {paymentRedirectResult === "error" && (
+          <p className="form-error" style={{ marginBottom: 16 }}>
+            Couldn't connect{paymentRedirectProvider ? ` ${PAYMENT_PROVIDER_LABEL[paymentRedirectProvider]}` : ""}
+            {paymentRedirectMessage ? `: ${paymentRedirectMessage}` : "."}
+          </p>
+        )}
+        {paymentError && <p className="form-error" style={{ marginBottom: 16 }}>{paymentError}</p>}
+
+        {paymentStatus === null ? (
+          <p className="cell-muted">Loading…</p>
+        ) : (
+          <div style={{ display: "grid", gap: 16 }}>
+            {(Object.keys(PAYMENT_PROVIDER_LABEL) as PaymentOAuthProvider[]).map((provider) => {
+              const s = paymentStatus[provider];
+              const label = PAYMENT_PROVIDER_LABEL[provider];
+              return (
+                <div
+                  key={provider}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: 16,
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 8,
+                  }}
+                >
+                  <div>
+                    <p style={{ fontWeight: 600, marginBottom: 4 }}>{label}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span
+                        className={`badge ${s.connected ? "badge-order-completed" : "badge-order-new"}`}
+                      >
+                        {s.connected ? "Connected" : "Not connected"}
+                      </span>
+                      {s.connected && s.accountLabel && (
+                        <span className="cell-muted" style={{ fontSize: 13 }}>
+                          {s.accountLabel}
+                        </span>
+                      )}
+                      {!s.configured && (
+                        <span className="cell-muted" style={{ fontSize: 13 }}>
+                          — test mode, real Stripe Connect not set up yet
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {s.connected ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleDisconnectPayment(provider)}
+                      disabled={busyPaymentProvider === provider}
+                    >
+                      {busyPaymentProvider === provider ? "Disconnecting…" : "Disconnect"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleConnectPayment(provider)}
+                      disabled={busyPaymentProvider === provider}
+                    >
+                      {busyPaymentProvider === provider ? "Redirecting…" : `Connect ${label}`}
                     </button>
                   )}
                 </div>

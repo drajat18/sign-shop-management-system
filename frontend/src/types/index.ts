@@ -60,6 +60,27 @@ export interface StorageConnectionStatus {
   connectedAt?: string;
 }
 
+export type PaymentOAuthProvider = "stripe";
+
+export interface PaymentConnectionStatus {
+  configured: boolean;
+  connected: boolean;
+  accountLabel?: string;
+  connectedAt?: string;
+}
+
+export interface DummyPaymentConnectInfo {
+  shopName: string;
+  provider: PaymentOAuthProvider;
+}
+
+export interface DummyChargeInfo {
+  customerName?: string;
+  orderTotal: number;
+  amount: number;
+  paymentStatus: "unpaid" | "partial" | "paid";
+}
+
 export interface OrderItem {
   id: string;
   signType: string;
