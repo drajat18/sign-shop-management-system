@@ -21,6 +21,11 @@ export const orderSchema = new Schema(
     // link — a single field rather than a thread, cleared by staff once
     // addressed via the same PATCH used for every other order field.
     customerComment: String,
+    // Set alongside customerComment whenever the customer takes an action on
+    // their portal link, so staff (including on the Production page, which
+    // has no customerComment text to show for a plain approval) know a
+    // response came in. Cleared the same way customerComment is.
+    customerResponseType: String,
   },
   { timestamps: true }
 );

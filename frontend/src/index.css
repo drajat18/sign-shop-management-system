@@ -379,6 +379,16 @@ textarea {
   color: var(--color-danger);
 }
 
+.badge-customer-approved {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.badge-customer-changes_requested {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
 /* ---------- Empty state ---------- */
 
 .empty-state {

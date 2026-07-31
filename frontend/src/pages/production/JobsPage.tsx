@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
-import { JobStatusBadge } from "../../components/StatusBadge.js";
+import { CustomerResponseBadge, JobStatusBadge } from "../../components/StatusBadge.js";
 import OrderDetailModal from "../front-desk/OrderDetailModal.js";
 import JobTicketModal from "./JobTicketModal.js";
 import type { JobStatus, ProductionJob } from "../../types/index.js";
@@ -39,6 +39,11 @@ export default function JobsPage() {
       setJobs((prev) => (prev ? prev.map((j) => (j.id === updated.id ? updated : j)) : prev));
     });
     socket.on("job:created", () => loadJobs());
+    // An order update (e.g. a customer approving/requesting changes, or
+    // staff dismissing that response) doesn't touch the job document
+    // itself, so a plain refetch is the simplest way to keep the
+    // per-row customer-response badge in sync.
+    socket.on("order:updated", () => loadJobs());
 
     return () => {
       socket.disconnect();
@@ -96,8 +101,15 @@ export default function JobsPage() {
               {jobs.map((job) => (
                 <tr key={job.id}>
                   <td className="cell-primary">
-                    {job.orderItem.signType}
-                    {job.orderItem.size ? ` — ${job.orderItem.size}` : ""}
+                    <div>
+                      {job.orderItem.signType}
+                      {job.orderItem.size ? ` — ${job.orderItem.size}` : ""}
+                    </div>
+                    {job.orderItem.order.customerResponseType && (
+                      <div style={{ marginTop: 4 }}>
+                        <CustomerResponseBadge type={job.orderItem.order.customerResponseType} />
+                      </div>
+                    )}
                   </td>
                   <td className="cell-muted">{job.orderItem.order?.customer?.name ?? "—"}</td>
                   <td className="cell-muted">

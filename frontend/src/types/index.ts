@@ -40,6 +40,7 @@ export interface Order {
   paymentStatus: "unpaid" | "partial" | "paid";
   itemsCount: number;
   customerComment?: string;
+  customerResponseType?: "approved" | "changes_requested";
 }
 
 export interface ArtworkFile {
@@ -154,6 +155,7 @@ export interface ProductionJob {
       id: string;
       dueDate?: string;
       customer: Customer;
+      customerResponseType?: "approved" | "changes_requested";
     };
   };
 }

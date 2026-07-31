@@ -157,12 +157,18 @@ export default function OrderDetailModal({
               </div>
             </div>
 
-            {order.customerComment && (
+            {order.customerResponseType && (
               <div
                 className="form-error"
                 style={{
-                  background: "var(--color-warning-soft)",
-                  color: "var(--color-warning)",
+                  background:
+                    order.customerResponseType === "approved"
+                      ? "var(--color-success-soft)"
+                      : "var(--color-warning-soft)",
+                  color:
+                    order.customerResponseType === "approved"
+                      ? "var(--color-success)"
+                      : "var(--color-warning)",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "flex-start",
@@ -170,14 +176,20 @@ export default function OrderDetailModal({
                 }}
               >
                 <span>
-                  <strong>Customer requested changes:</strong> {order.customerComment}
+                  {order.customerResponseType === "approved" ? (
+                    <strong>Customer approved the design.</strong>
+                  ) : (
+                    <>
+                      <strong>Customer requested changes:</strong> {order.customerComment}
+                    </>
+                  )}
                 </span>
                 {editable && (
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
                     style={{ flexShrink: 0 }}
-                    onClick={() => patchOrder({ customerComment: "" })}
+                    onClick={() => patchOrder({ customerComment: "", customerResponseType: "" })}
                   >
                     Dismiss
                   </button>

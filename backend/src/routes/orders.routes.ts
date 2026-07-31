@@ -156,19 +156,20 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   const existing = await Order.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: "Order not found" });
 
-  const { status, dueDate, paymentStatus, description, customerComment } = req.body as {
+  const { status, dueDate, paymentStatus, description, customerComment, customerResponseType } = req.body as {
     status?: string;
     dueDate?: string;
     paymentStatus?: string;
     description?: string;
     customerComment?: string;
+    customerResponseType?: string;
   };
 
   const previousStatus = existing.status;
   Object.assign(
     existing,
     Object.fromEntries(
-      Object.entries({ status, dueDate, paymentStatus, description, customerComment }).filter(
+      Object.entries({ status, dueDate, paymentStatus, description, customerComment, customerResponseType }).filter(
         ([, v]) => v !== undefined
       )
     )
@@ -183,8 +184,11 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
       fromStatus: previousStatus,
       toStatus: existing.status,
     });
-    emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, existing);
   }
+  // Emitted unconditionally (not just on status change) so other open tabs —
+  // notably the Production page, which shows a customer-response badge —
+  // pick up edits like a staff member dismissing that badge.
+  emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, existing);
 
   res.json(existing);
 });

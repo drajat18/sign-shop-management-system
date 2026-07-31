@@ -79,6 +79,7 @@ router.post("/:token/approve", async (req, res) => {
 
   order.status = "in_production";
   order.customerComment = undefined;
+  order.customerResponseType = "approved";
   await order.save();
 
   await models.AuditLog.create({
@@ -101,6 +102,7 @@ router.post("/:token/comment", async (req, res) => {
   if (!order) return res.status(404).json({ error: "This link is invalid or has expired." });
 
   order.customerComment = comment.trim();
+  order.customerResponseType = "changes_requested";
   await order.save();
 
   await models.AuditLog.create({
