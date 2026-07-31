@@ -1,8 +1,10 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { requirePlatformAuth } from "../../middleware/platformAuth.js";
 import { requirePlatformRole } from "../../middleware/requirePlatformRole.js";
 import { getShopModels } from "../../models/shopModels.js";
+import DummyCheckoutSession from "../../models/platform/DummyCheckoutSession.js";
 import PlatformUser from "../../models/platform/PlatformUser.js";
 import Shop, { PLAN_TIERS, type PlanTier } from "../../models/platform/Shop.js";
 import { getStripe, priceIdForTier, STRIPE_CONFIGURED } from "../../services/billing/stripe.js";
@@ -147,22 +149,38 @@ router.post("/:id/impersonate", requirePlatformRole("owner", "support"), async (
   });
 });
 
-// Generates a Stripe-hosted Checkout link for a shop to subscribe to (or
-// switch to) a given plan tier — the platform team copies this to send to
-// the shop directly, same shape as the customer-portal link generator.
-// Nothing on our side is charged or activated until Stripe's webhook
-// confirms the checkout actually completed.
-router.post("/:id/billing-link", requirePlatformRole("owner", "billing"), async (req, res) => {
-  if (!STRIPE_CONFIGURED) {
-    return res.status(400).json({ error: "Billing isn't configured yet — set STRIPE_SECRET_KEY on the server." });
-  }
+const DUMMY_CHECKOUT_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
 
+// Generates a checkout link for a shop to subscribe to (or switch to) a
+// given plan tier — the platform team copies this to send to the shop
+// directly, same shape as the customer-portal link generator. Nothing on
+// our side is charged or activated until the checkout actually completes
+// (real Stripe webhook, or the dummy provider's own completion step).
+//
+// Falls back to the dummy provider whenever Stripe isn't configured, so
+// the whole link → pay → status-update loop is testable with zero external
+// setup. Swapping in real STRIPE_* env vars later needs no code change —
+// this same endpoint just starts returning real Stripe Checkout URLs.
+router.post("/:id/billing-link", requirePlatformRole("owner", "billing"), async (req, res) => {
   const shop = await Shop.findById(req.params.id);
   if (!shop) return res.status(404).json({ error: "Shop not found" });
 
   const { planTier } = req.body as { planTier?: string };
   if (!planTier || !PLAN_TIERS.includes(planTier as PlanTier)) {
     return res.status(400).json({ error: `planTier must be one of: ${PLAN_TIERS.join(", ")}` });
+  }
+
+  if (!STRIPE_CONFIGURED) {
+    const dummySession = await DummyCheckoutSession.create({
+      shop: shop.id,
+      planTier,
+      token: crypto.randomBytes(24).toString("base64url"),
+      expiresAt: new Date(Date.now() + DUMMY_CHECKOUT_TTL_MS),
+    });
+    return res.json({
+      url: `${process.env.FRONTEND_URL}/billing/dummy-checkout/${dummySession.token}`,
+      mode: "dummy",
+    });
   }
 
   let priceId: string;
@@ -184,7 +202,7 @@ router.post("/:id/billing-link", requirePlatformRole("owner", "billing"), async 
     cancel_url: `${process.env.FRONTEND_URL}/login?billing=cancelled`,
   });
 
-  res.json({ url: session.url });
+  res.json({ url: session.url, mode: "stripe" });
 });
 
 export default router;

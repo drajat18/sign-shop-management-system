@@ -131,6 +131,13 @@ export interface PortalOrder {
   items: PortalOrderItem[];
 }
 
+export interface DummyCheckoutSession {
+  shopName: string;
+  planTier: PlanTier;
+  priceUsd: number;
+  completed: boolean;
+}
+
 export interface ReportsSummary {
   totalOrders: number;
   totalOrderValue: number;

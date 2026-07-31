@@ -24,6 +24,7 @@ export default function ShopDetailModal({
   const [billingTier, setBillingTier] = useState<PlanTier>("starter");
   const [billingError, setBillingError] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [linkMode, setLinkMode] = useState<"stripe" | "dummy" | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
   const canDeactivate = user?.role === "owner";
   const canManageBilling = user?.role === "owner" || user?.role === "billing";
@@ -43,13 +44,13 @@ export default function ShopDetailModal({
     setBillingError(null);
     setGeneratingLink(true);
     try {
-      const { url } = await apiFetch<{ url: string }>(`/platform/shops/${shopId}/billing-link`, {
-        method: "POST",
-        token,
-        body: JSON.stringify({ planTier: billingTier }),
-      });
+      const { url, mode } = await apiFetch<{ url: string; mode: "stripe" | "dummy" }>(
+        `/platform/shops/${shopId}/billing-link`,
+        { method: "POST", token, body: JSON.stringify({ planTier: billingTier }) }
+      );
       await navigator.clipboard.writeText(url);
       setLinkCopied(true);
+      setLinkMode(mode);
       setTimeout(() => setLinkCopied(false), 2500);
     } catch (err) {
       setBillingError(err instanceof Error ? err.message : "Failed to generate billing link");
@@ -123,6 +124,12 @@ export default function ShopDetailModal({
             {billingError && (
               <p className="form-error" style={{ marginTop: 8 }}>
                 {billingError}
+              </p>
+            )}
+            {linkCopied && linkMode === "dummy" && (
+              <p className="cell-muted" style={{ marginTop: 8, fontSize: 13 }}>
+                Stripe isn't configured yet, so this is a test link — opening it simulates a paid
+                subscription without charging anything.
               </p>
             )}
           </div>

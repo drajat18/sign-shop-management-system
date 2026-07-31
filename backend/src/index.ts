@@ -11,6 +11,7 @@ import { connectDB, getMongoUri } from "./config/db.js";
 import { initSockets } from "./sockets/index.js";
 
 import authRoutes from "./routes/auth.routes.js";
+import billingDummyRoutes from "./routes/billingDummy.routes.js";
 import customersRoutes from "./routes/customers.routes.js";
 import filesRoutes from "./routes/files.routes.js";
 import jobsRoutes from "./routes/jobs.routes.js";
@@ -49,6 +50,7 @@ app.use("/api/platform/auth", platformAuthRoutes);
 app.use("/api/platform/team", platformTeamRoutes);
 app.use("/api/platform/shops", platformShopsRoutes);
 app.use("/api/portal/:shopId", portalRoutes);
+app.use("/api/billing/dummy-checkout", billingDummyRoutes);
 app.use("/api/reports", reportsRoutes);
 
 // Catches errors forwarded by express-async-errors (and anything passed to

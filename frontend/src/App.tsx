@@ -11,6 +11,7 @@ import SettingsPage from "./pages/admin/SettingsPage.js";
 import ForgotPassword from "./pages/ForgotPassword.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
 import Login from "./pages/Login.js";
+import DummyCheckoutPage from "./pages/platform/DummyCheckoutPage.js";
 import PlatformLogin from "./pages/platform/PlatformLogin.js";
 import ShopsPage from "./pages/platform/ShopsPage.js";
 import TeamPage from "./pages/platform/TeamPage.js";
@@ -31,7 +32,12 @@ export default function App() {
   // Fully public, no auth of any kind — a customer's link is the only
   // credential. Needs to work whether or not this browser also happens to
   // have an employee or platform session active.
-  const publicRoutes = <Route path="/portal/:shopId/:token" element={<CustomerPortalPage />} />;
+  const publicRoutes = (
+    <>
+      <Route path="/portal/:shopId/:token" element={<CustomerPortalPage />} />
+      <Route path="/billing/dummy-checkout/:token" element={<DummyCheckoutPage />} />
+    </>
+  );
 
   // The platform console lives at /platform/* independent of any shop
   // session — a platform team member doesn't need to be (and usually
