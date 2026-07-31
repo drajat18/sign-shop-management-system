@@ -26,7 +26,7 @@ export const internalProvider: FileStorageProvider = {
     // through our own authenticated route, not a direct URL.
     return `/api/files/${fileId}/raw`;
   },
-  async delete(filePath) {
+  async delete(filePath, _shopId) {
     await fs.unlink(resolveUploadPath(filePath)).catch(() => undefined);
   },
 };

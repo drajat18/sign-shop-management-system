@@ -1,4 +1,4 @@
-export type StorageProvider = "internal" | "dropbox";
+export type StorageProvider = "internal" | "dropbox" | "google_drive";
 
 export interface StoredFile {
   storageProvider: StorageProvider;
@@ -10,8 +10,10 @@ export interface FileStorageProvider {
   upload(fileName: string, data: Buffer, shopId: string): Promise<StoredFile>;
   // fileId is only used by providers that must proxy through our own API
   // (local disk) rather than returning a self-contained signed URL (R2).
-  getDownloadUrl(filePath: string, fileId: string): Promise<string>;
-  delete(filePath: string): Promise<void>;
+  // shopId is needed by BYO providers (Dropbox/Drive) to look up which
+  // shop's OAuth token to authenticate with — R2/internal ignore it.
+  getDownloadUrl(filePath: string, fileId: string, shopId: string): Promise<string>;
+  delete(filePath: string, shopId: string): Promise<void>;
 }
 
 const R2_CONFIGURED = Boolean(
@@ -22,7 +24,7 @@ const R2_CONFIGURED = Boolean(
 // directly, so the rest of the app never has to know which one is backing
 // a given file. "internal" transparently means R2 when credentials are
 // configured, local disk otherwise — shops never choose between the two,
-// only between "internal" and "their own Dropbox".
+// only between "internal" and their own connected Dropbox/Google Drive.
 export async function getProvider(provider: StorageProvider): Promise<FileStorageProvider> {
   switch (provider) {
     case "internal": {
@@ -36,6 +38,10 @@ export async function getProvider(provider: StorageProvider): Promise<FileStorag
     case "dropbox": {
       const { dropboxProvider } = await import("./dropboxProvider.js");
       return dropboxProvider;
+    }
+    case "google_drive": {
+      const { googleDriveProvider } = await import("./googleDriveProvider.js");
+      return googleDriveProvider;
     }
   }
 }

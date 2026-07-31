@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { resolvePortalShop } from "../middleware/portalContext.js";
 import type { ShopModels } from "../models/shopModels.js";
-import { getProvider } from "../services/fileStorage/index.js";
+import { getProvider, type StorageProvider } from "../services/fileStorage/index.js";
 import { resolveUploadPath } from "../services/fileStorage/internalProvider.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
 
@@ -53,12 +53,13 @@ router.get("/:token/files/:fileId", async (req, res) => {
   if (!order) return res.status(404).json({ error: "This link is invalid or has expired." });
 
   const file = await models.FileRecord.findById(req.params.fileId);
-  if (!file || file.order.toString() !== order.id || file.storageProvider !== "internal") {
+  if (!file || file.order.toString() !== order.id) {
     return res.status(404).json({ error: "File not found" });
   }
 
-  const provider = await getProvider("internal");
-  const url = await provider.getDownloadUrl(file.filePath, file.id);
+  const shopId = (req.params as unknown as { shopId: string }).shopId;
+  const provider = await getProvider(file.storageProvider as StorageProvider);
+  const url = await provider.getDownloadUrl(file.filePath, file.id, shopId);
   if (url.startsWith("http")) {
     // R2 signed URL — send the browser straight there.
     return res.redirect(url);

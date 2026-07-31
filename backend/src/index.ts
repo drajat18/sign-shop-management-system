@@ -22,6 +22,8 @@ import platformShopsRoutes from "./routes/platform/shops.routes.js";
 import platformTeamRoutes from "./routes/platform/team.routes.js";
 import portalRoutes from "./routes/portal.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
+import settingsStorageRoutes from "./routes/settingsStorage.routes.js";
+import storageOAuthCallbackRoutes from "./routes/storageOAuthCallback.routes.js";
 import stripeWebhookRoutes from "./routes/stripeWebhook.routes.js";
 import usersRoutes from "./routes/users.routes.js";
 
@@ -52,6 +54,8 @@ app.use("/api/platform/shops", platformShopsRoutes);
 app.use("/api/portal/:shopId", portalRoutes);
 app.use("/api/billing/dummy-checkout", billingDummyRoutes);
 app.use("/api/reports", reportsRoutes);
+app.use("/api/settings/storage", settingsStorageRoutes);
+app.use("/api/storage-oauth", storageOAuthCallbackRoutes);
 
 // Catches errors forwarded by express-async-errors (and anything passed to
 // next(err) directly) so a failed request returns a normal 500 instead of

@@ -8,6 +8,7 @@ import { orderItemSchema, type OrderItem } from "./OrderItem.js";
 import { passwordResetTokenSchema, type PasswordResetToken } from "./PasswordResetToken.js";
 import { productionJobSchema, type ProductionJob } from "./ProductionJob.js";
 import { statusLogSchema, type StatusLog } from "./StatusLog.js";
+import { storageConnectionSchema, type StorageConnection } from "./StorageConnection.js";
 import { userSchema, type User } from "./User.js";
 
 export interface ShopModels {
@@ -21,6 +22,7 @@ export interface ShopModels {
   AuditLog: Model<AuditLog>;
   PasswordResetToken: Model<PasswordResetToken>;
   CustomerPortalToken: Model<CustomerPortalToken>;
+  StorageConnection: Model<StorageConnection>;
 }
 
 const registry = new WeakMap<Connection, ShopModels>();
@@ -48,6 +50,10 @@ export function getShopModels(connection: Connection): ShopModels {
     CustomerPortalToken: connection.model<CustomerPortalToken>(
       "CustomerPortalToken",
       customerPortalTokenSchema
+    ),
+    StorageConnection: connection.model<StorageConnection>(
+      "StorageConnection",
+      storageConnectionSchema
     ),
   };
   registry.set(connection, models);

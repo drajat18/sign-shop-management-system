@@ -64,7 +64,7 @@ router.get(
     if (!record) return res.status(404).json({ error: "File not found" });
 
     const provider = await getProvider(record.storageProvider as StorageProvider);
-    const url = await provider.getDownloadUrl(record.filePath, record.id);
+    const url = await provider.getDownloadUrl(record.filePath, record.id, req.auth!.shopId);
     res.json({ url, fileName: record.fileName });
   }
 );

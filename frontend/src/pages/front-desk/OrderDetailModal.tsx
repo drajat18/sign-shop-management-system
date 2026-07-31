@@ -3,7 +3,14 @@ import { apiFetch } from "../../api/client.js";
 import { downloadArtwork, uploadArtwork } from "../../api/files.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { JobStatusBadge, OrderStatusBadge } from "../../components/StatusBadge.js";
-import type { NewOrderItemInput, OrderDetail, OrderStatus } from "../../types/index.js";
+import type {
+  NewOrderItemInput,
+  OrderDetail,
+  OrderStatus,
+  StorageConnectionStatus,
+  StorageOAuthProvider,
+  StorageProvider,
+} from "../../types/index.js";
 
 const ORDER_STATUSES: OrderStatus[] = [
   "new",
@@ -13,6 +20,11 @@ const ORDER_STATUSES: OrderStatus[] = [
   "completed",
 ];
 const PAYMENT_STATUSES = ["unpaid", "partial", "paid"] as const;
+const STORAGE_LABEL: Record<StorageProvider, string> = {
+  internal: "Internal storage",
+  dropbox: "Dropbox",
+  google_drive: "Google Drive",
+};
 
 const emptyItem = (): NewOrderItemInput => ({
   signType: "",
@@ -40,6 +52,9 @@ export default function OrderDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [showAddItem, setShowAddItem] = useState(false);
   const [newItem, setNewItem] = useState<NewOrderItemInput>(emptyItem());
+  const [newItemStorage, setNewItemStorage] = useState<StorageProvider>("internal");
+  const [itemStorage, setItemStorage] = useState<Record<string, StorageProvider>>({});
+  const [storageOptions, setStorageOptions] = useState<StorageProvider[]>(["internal"]);
   const [busy, setBusy] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -50,6 +65,19 @@ export default function OrderDetailModal({
   }
 
   useEffect(loadOrder, [orderId, token]);
+
+  useEffect(() => {
+    if (!editable) return;
+    apiFetch<Record<StorageOAuthProvider, StorageConnectionStatus>>("/settings/storage", { token })
+      .then((status) => {
+        const connected = (Object.keys(status) as StorageOAuthProvider[]).filter(
+          (p) => status[p].connected
+        );
+        setStorageOptions(["internal", ...connected]);
+      })
+      .catch(console.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, token]);
 
   async function patchOrder(patch: Record<string, unknown>) {
     await apiFetch(`/orders/${orderId}`, { method: "PATCH", token, body: JSON.stringify(patch) });
@@ -75,7 +103,7 @@ export default function OrderDetailModal({
     setBusy(true);
     setError(null);
     try {
-      await uploadArtwork(file, orderId, itemId, token);
+      await uploadArtwork(file, orderId, itemId, token, itemStorage[itemId] ?? "internal");
       loadOrder();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -112,9 +140,10 @@ export default function OrderDetailModal({
         body: JSON.stringify(newItem),
       });
       if (newItem.file) {
-        await uploadArtwork(newItem.file, orderId, item.id, token);
+        await uploadArtwork(newItem.file, orderId, item.id, token, newItemStorage);
       }
       setNewItem(emptyItem());
+      setNewItemStorage("internal");
       setShowAddItem(false);
       loadOrder();
       onChanged();
@@ -392,14 +421,31 @@ export default function OrderDetailModal({
                         Download {item.artworkFile.fileName}
                       </button>
                     ) : editable ? (
-                      <label className="file-input">
-                        {busy ? "Uploading…" : "Choose file…"}
-                        <input
-                          type="file"
-                          disabled={busy}
-                          onChange={(e) => handleFileChange(item.id, e.target.files?.[0] ?? null)}
-                        />
-                      </label>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <label className="file-input">
+                          {busy ? "Uploading…" : "Choose file…"}
+                          <input
+                            type="file"
+                            disabled={busy}
+                            onChange={(e) => handleFileChange(item.id, e.target.files?.[0] ?? null)}
+                          />
+                        </label>
+                        {storageOptions.length > 1 && (
+                          <select
+                            value={itemStorage[item.id] ?? "internal"}
+                            onChange={(e) =>
+                              setItemStorage({ ...itemStorage, [item.id]: e.target.value as StorageProvider })
+                            }
+                            style={{ fontSize: 13 }}
+                          >
+                            {storageOptions.map((p) => (
+                              <option key={p} value={p}>
+                                {STORAGE_LABEL[p]}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                     ) : (
                       <span className="cell-muted" style={{ fontSize: 13 }}>
                         No file attached
@@ -484,7 +530,7 @@ export default function OrderDetailModal({
 
                 <div className="field item-file-field">
                   Design file
-                  <div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <label className="file-input">
                       {newItem.file ? newItem.file.name : "Choose file…"}
                       <input
@@ -492,6 +538,19 @@ export default function OrderDetailModal({
                         onChange={(e) => setNewItem({ ...newItem, file: e.target.files?.[0] ?? null })}
                       />
                     </label>
+                    {storageOptions.length > 1 && (
+                      <select
+                        value={newItemStorage}
+                        onChange={(e) => setNewItemStorage(e.target.value as StorageProvider)}
+                        style={{ fontSize: 13 }}
+                      >
+                        {storageOptions.map((p) => (
+                          <option key={p} value={p}>
+                            {STORAGE_LABEL[p]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </div>
 

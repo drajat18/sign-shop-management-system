@@ -43,10 +43,21 @@ export interface Order {
   customerResponseType?: "approved" | "changes_requested";
 }
 
+export type StorageProvider = "internal" | "dropbox" | "google_drive";
+
 export interface ArtworkFile {
   id: string;
   fileName: string;
-  storageProvider: "internal" | "dropbox";
+  storageProvider: StorageProvider;
+}
+
+export type StorageOAuthProvider = "dropbox" | "google_drive";
+
+export interface StorageConnectionStatus {
+  configured: boolean;
+  connected: boolean;
+  accountLabel?: string;
+  connectedAt?: string;
 }
 
 export interface OrderItem {

@@ -1,5 +1,5 @@
 import { apiFetch } from "./client.js";
-import type { ArtworkFile } from "../types/index.js";
+import type { ArtworkFile, StorageProvider } from "../types/index.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -18,7 +18,8 @@ export async function uploadArtwork(
   file: File,
   orderId: string,
   orderItemId: string,
-  token: string | null
+  token: string | null,
+  storageProvider: StorageProvider = "internal"
 ): Promise<ArtworkFile> {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error("File is too large (15MB max)");
@@ -31,7 +32,7 @@ export async function uploadArtwork(
       fileName: file.name,
       orderId,
       orderItemId,
-      storageProvider: "internal",
+      storageProvider,
       data,
     }),
   });

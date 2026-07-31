@@ -33,7 +33,7 @@ export const r2Provider: FileStorageProvider = {
       expiresIn: 3600,
     });
   },
-  async delete(filePath) {
+  async delete(filePath, _shopId) {
     await client().send(new DeleteObjectCommand({ Bucket: BUCKET(), Key: filePath }));
   },
 };

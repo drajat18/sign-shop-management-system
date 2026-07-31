@@ -2,8 +2,8 @@ import { Schema, type InferSchemaType } from "mongoose";
 
 export const fileRecordSchema = new Schema(
   {
-    storageProvider: { type: String, enum: ["internal", "dropbox"], required: true },
-    // Internal storage: object key. Dropbox: file path in the shop's connected account.
+    storageProvider: { type: String, enum: ["internal", "dropbox", "google_drive"], required: true },
+    // Internal storage: object key. Dropbox/Google Drive: file path/ID in the shop's connected account.
     filePath: { type: String, required: true },
     fileName: { type: String, required: true },
     order: { type: Schema.Types.ObjectId, ref: "Order", required: true },
