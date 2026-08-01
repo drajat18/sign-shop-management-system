@@ -60,7 +60,7 @@ export interface StorageConnectionStatus {
   connectedAt?: string;
 }
 
-export type PaymentOAuthProvider = "stripe";
+export type PaymentOAuthProvider = "stripe" | "square" | "paypal";
 
 export interface PaymentConnectionStatus {
   configured: boolean;

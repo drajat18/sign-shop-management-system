@@ -1,0 +1,78 @@
+import { Router } from "express";
+import { getShopModels } from "../models/shopModels.js";
+import { getShopConnection } from "../services/shopConnection.js";
+import { capturePaypalOrder } from "../services/payments/paypalPayments.js";
+import { getSquareOrderState } from "../services/payments/squarePayments.js";
+import { verifyChargeLinkToken } from "../services/paymentOAuth/state.js";
+import { EVENTS, emitToShop } from "../sockets/index.js";
+
+const router = Router();
+
+function resultRedirect(success: boolean): string {
+  return `${process.env.FRONTEND_URL}/payments/result?status=${success ? "success" : "failed"}`;
+}
+
+async function markOrderPaid(shopId: string, orderId: string, amount: number) {
+  const { Order } = getShopModels(getShopConnection(shopId));
+  const order = await Order.findById(orderId);
+  if (!order) return;
+  order.paymentStatus = amount >= order.total ? "paid" : "partial";
+  await order.save();
+  await order.populate("customer");
+  emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
+}
+
+// Square redirects the customer here after checkout — orderId is Square's
+// own, appended by Square itself (see checkout_options.redirect_url).
+// Confirmed server-side against Square's API rather than trusted as-is,
+// since a browser redirect alone doesn't prove the payment captured.
+router.get("/square", async (req, res) => {
+  const { ourToken, orderId } = req.query as { ourToken?: string; orderId?: string };
+  if (!ourToken || !orderId) return res.redirect(resultRedirect(false));
+
+  let decoded;
+  try {
+    decoded = verifyChargeLinkToken(ourToken);
+  } catch {
+    return res.redirect(resultRedirect(false));
+  }
+
+  const { PaymentConnection } = getShopModels(getShopConnection(decoded.shopId));
+  const connection = await PaymentConnection.findOne({ provider: "square" });
+  if (!connection?.accessToken) return res.redirect(resultRedirect(false));
+
+  const state = await getSquareOrderState(connection.accessToken, orderId).catch(() => undefined);
+  if (state !== "COMPLETED") return res.redirect(resultRedirect(false));
+
+  await markOrderPaid(decoded.shopId, decoded.orderId, decoded.amount);
+  res.redirect(resultRedirect(true));
+});
+
+// PayPal's own order id comes back as `token` on its return_url redirect —
+// captured here (the authoritative step that actually moves the money)
+// rather than assuming approval means payment.
+router.get("/paypal", async (req, res) => {
+  const { ourToken, token: paypalOrderId } = req.query as { ourToken?: string; token?: string };
+  if (!ourToken || !paypalOrderId) return res.redirect(resultRedirect(false));
+
+  let decoded;
+  try {
+    decoded = verifyChargeLinkToken(ourToken);
+  } catch {
+    return res.redirect(resultRedirect(false));
+  }
+
+  const captured = await capturePaypalOrder(paypalOrderId).catch(() => false);
+  if (!captured) return res.redirect(resultRedirect(false));
+
+  await markOrderPaid(decoded.shopId, decoded.orderId, decoded.amount);
+  res.redirect(resultRedirect(true));
+});
+
+// PayPal also needs a cancel_url — the customer backed out, nothing to
+// confirm.
+router.get("/paypal-cancel", (_req, res) => {
+  res.redirect(resultRedirect(false));
+});
+
+export default router;

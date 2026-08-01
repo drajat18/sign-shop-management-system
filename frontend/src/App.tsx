@@ -13,6 +13,7 @@ import OrdersPage from "./pages/front-desk/OrdersPage.js";
 import Login from "./pages/Login.js";
 import DummyChargePage from "./pages/payments/DummyChargePage.js";
 import DummyConnectPage from "./pages/payments/DummyConnectPage.js";
+import PaymentResultPage from "./pages/payments/PaymentResultPage.js";
 import DummyCheckoutPage from "./pages/platform/DummyCheckoutPage.js";
 import PlatformLogin from "./pages/platform/PlatformLogin.js";
 import ShopsPage from "./pages/platform/ShopsPage.js";
@@ -40,6 +41,7 @@ export default function App() {
       <Route path="/billing/dummy-checkout/:token" element={<DummyCheckoutPage />} />
       <Route path="/payments/dummy-connect/:token" element={<DummyConnectPage />} />
       <Route path="/payments/dummy-charge/:token" element={<DummyChargePage />} />
+      <Route path="/payments/result" element={<PaymentResultPage />} />
     </>
   );
 

@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import type { DummyPaymentConnectInfo } from "../../types/index.js";
 
-const PROVIDER_LABEL: Record<string, string> = { stripe: "Stripe" };
+const PROVIDER_LABEL: Record<string, string> = { stripe: "Stripe", square: "Square", paypal: "PayPal" };
 
 // Stand-in for Stripe Connect's own authorization screen — only ever
 // reachable when the platform hasn't set up Connect yet (see

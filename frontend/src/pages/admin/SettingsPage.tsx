@@ -16,6 +16,8 @@ const PROVIDER_LABEL: Record<StorageOAuthProvider, string> = {
 
 const PAYMENT_PROVIDER_LABEL: Record<PaymentOAuthProvider, string> = {
   stripe: "Stripe",
+  square: "Square",
+  paypal: "PayPal",
 };
 
 type StatusResponse = Record<StorageOAuthProvider, StorageConnectionStatus>;
@@ -279,7 +281,7 @@ export default function SettingsPage() {
                       )}
                       {!s.configured && (
                         <span className="cell-muted" style={{ fontSize: 13 }}>
-                          — test mode, real Stripe Connect not set up yet
+                          — test mode, real {label} not set up yet
                         </span>
                       )}
                     </div>

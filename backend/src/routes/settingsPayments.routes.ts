@@ -2,11 +2,19 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { PAYMENT_OAUTH_PROVIDERS, type PaymentOAuthProvider } from "../models/PaymentConnection.js";
+import { PAYPAL_CONFIGURED, createPaypalPartnerReferral } from "../services/paymentOAuth/paypalConnect.js";
+import { SQUARE_CONFIGURED, buildSquareAuthorizeUrl } from "../services/paymentOAuth/squareConnect.js";
 import { STRIPE_CONNECT_CONFIGURED, buildStripeConnectAuthorizeUrl } from "../services/paymentOAuth/stripeConnect.js";
-import { signPaymentConnectState } from "../services/paymentOAuth/state.js";
+import { paymentCallbackUrl, signPaymentConnectState } from "../services/paymentOAuth/state.js";
 
 const router = Router();
 router.use(requireAuth);
+
+const CONFIGURED: Record<PaymentOAuthProvider, boolean> = {
+  stripe: STRIPE_CONNECT_CONFIGURED,
+  square: SQUARE_CONFIGURED,
+  paypal: PAYPAL_CONFIGURED,
+};
 
 function isPaymentProvider(value: string): value is PaymentOAuthProvider {
   return (PAYMENT_OAUTH_PROVIDERS as readonly string[]).includes(value);
@@ -27,7 +35,7 @@ router.get("/", requireRole("admin", "manager", "front_desk"), async (req, res) 
         return [
           provider,
           {
-            configured: provider === "stripe" ? STRIPE_CONNECT_CONFIGURED : false,
+            configured: CONFIGURED[provider],
             connected: Boolean(connection),
             accountLabel: connection?.accountLabel ?? connection?.connectedAccountId,
             connectedAt: connection?.createdAt,
@@ -44,7 +52,7 @@ router.post("/:provider/connect", requireRole("admin"), async (req, res) => {
     return res.status(400).json({ error: `provider must be one of: ${PAYMENT_OAUTH_PROVIDERS.join(", ")}` });
   }
 
-  const dummy = !STRIPE_CONNECT_CONFIGURED;
+  const dummy = !CONFIGURED[provider];
   const state = signPaymentConnectState({
     shopId: req.auth!.shopId,
     userId: req.auth!.userId,
@@ -52,11 +60,26 @@ router.post("/:provider/connect", requireRole("admin"), async (req, res) => {
     dummy,
   });
 
-  const url = dummy
-    ? `${process.env.FRONTEND_URL}/payments/dummy-connect/${state}`
-    : buildStripeConnectAuthorizeUrl(state);
+  if (dummy) {
+    return res.json({ url: `${process.env.FRONTEND_URL}/payments/dummy-connect/${state}`, mode: "dummy" });
+  }
 
-  res.json({ url, mode: dummy ? "dummy" : "stripe" });
+  let url: string;
+  switch (provider) {
+    case "stripe":
+      url = buildStripeConnectAuthorizeUrl(state);
+      break;
+    case "square":
+      url = buildSquareAuthorizeUrl(state);
+      break;
+    case "paypal":
+      // Unlike Stripe/Square (a plain authorize URL), PayPal's onboarding
+      // link has to be requested from their API up front.
+      url = await createPaypalPartnerReferral(state, paymentCallbackUrl("paypal"));
+      break;
+  }
+
+  res.json({ url, mode: provider });
 });
 
 router.post("/:provider/disconnect", requireRole("admin"), async (req, res) => {

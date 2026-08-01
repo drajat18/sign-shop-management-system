@@ -18,6 +18,7 @@ import jobsRoutes from "./routes/jobs.routes.js";
 import orderItemsRoutes from "./routes/orderItems.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
 import paymentOAuthCallbackRoutes from "./routes/paymentOAuthCallback.routes.js";
+import paymentReturnRoutes from "./routes/paymentReturn.routes.js";
 import paymentsDummyRoutes from "./routes/paymentsDummy.routes.js";
 import platformAuthRoutes from "./routes/platform/auth.routes.js";
 import platformShopsRoutes from "./routes/platform/shops.routes.js";
@@ -68,6 +69,7 @@ app.use("/api/storage-oauth", storageOAuthCallbackRoutes);
 app.use("/api/settings/payments", settingsPaymentsRoutes);
 app.use("/api/payment-oauth", paymentOAuthCallbackRoutes);
 app.use("/api/payments", paymentsDummyRoutes);
+app.use("/api/payment-return", paymentReturnRoutes);
 
 // Catches errors forwarded by express-async-errors (and anything passed to
 // next(err) directly) so a failed request returns a normal 500 instead of

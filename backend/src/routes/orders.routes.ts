@@ -4,8 +4,14 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { getStripe } from "../services/billing/stripe.js";
 import { recomputeOrderTotal } from "../services/orderTotals.js";
-import { signChargeLinkToken } from "../services/paymentOAuth/state.js";
+import { createPaypalOrder } from "../services/payments/paypalPayments.js";
+import { createSquarePaymentLink, withSquareAutoRefresh } from "../services/payments/squarePayments.js";
+import { paymentBackendUrl, signChargeLinkToken } from "../services/paymentOAuth/state.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
+
+function paymentReturnBaseUrl(): string {
+  return `${paymentBackendUrl()}/api/payment-return`;
+}
 
 const PORTAL_LINK_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
@@ -225,9 +231,11 @@ router.post("/:id/portal-link", requireRole("admin", "manager", "front_desk"), a
 
 // Returns a payment link for this order, charged through the shop's own
 // connected payment processor — the platform never touches this money.
-// Falls back to a dummy payment link when the shop's connection (or the
-// platform's Stripe Connect setup) is still a test one, same "configured
-// vs connected" split used everywhere else in this app's integrations.
+// Falls back to a dummy payment link when the shop's connection is still
+// a test one, same "configured vs connected" split used everywhere else
+// in this app's integrations. Whichever processor a shop has connected
+// (Stripe, Square, or PayPal) is the one used here — a shop only ever
+// has one live at a time in practice.
 router.post("/:id/charge-link", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Order, PaymentConnection } = req.models!;
   const order = await Order.findById(req.params.id);
@@ -235,8 +243,9 @@ router.post("/:id/charge-link", requireRole("admin", "manager", "front_desk"), a
 
   const { amount } = req.body as { amount?: number };
   const chargeAmount = typeof amount === "number" && amount > 0 ? amount : order.total;
+  const shopId = req.auth!.shopId;
 
-  const connection = await PaymentConnection.findOne({ provider: "stripe" });
+  const connection = await PaymentConnection.findOne();
   if (!connection) {
     return res
       .status(400)
@@ -244,32 +253,61 @@ router.post("/:id/charge-link", requireRole("admin", "manager", "front_desk"), a
   }
 
   if (connection.connectedAccountId.startsWith("dummy_acct_")) {
-    const token = signChargeLinkToken({ shopId: req.auth!.shopId, orderId: order.id, amount: chargeAmount });
+    const token = signChargeLinkToken({ shopId, orderId: order.id, amount: chargeAmount });
     return res.json({ url: `${process.env.FRONTEND_URL}/payments/dummy-charge/${token}`, mode: "dummy" });
   }
 
-  const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create(
-    {
-      mode: "payment",
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            unit_amount: Math.round(chargeAmount * 100),
-            product_data: { name: "Order payment" },
+  if (connection.provider === "stripe") {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              unit_amount: Math.round(chargeAmount * 100),
+              product_data: { name: "Order payment" },
+            },
+            quantity: 1,
           },
-          quantity: 1,
-        },
-      ],
-      metadata: { shopId: req.auth!.shopId, orderId: order.id },
-      success_url: `${process.env.FRONTEND_URL}/login?payment=success`,
-      cancel_url: `${process.env.FRONTEND_URL}/login?payment=cancelled`,
-    },
-    { stripeAccount: connection.connectedAccountId }
-  );
+        ],
+        metadata: { shopId, orderId: order.id },
+        success_url: `${process.env.FRONTEND_URL}/login?payment=success`,
+        cancel_url: `${process.env.FRONTEND_URL}/login?payment=cancelled`,
+      },
+      { stripeAccount: connection.connectedAccountId }
+    );
+    return res.json({ url: session.url, mode: "stripe" });
+  }
 
-  res.json({ url: session.url, mode: "stripe" });
+  const ourToken = signChargeLinkToken({ shopId, orderId: order.id, amount: chargeAmount });
+
+  if (connection.provider === "square") {
+    if (!connection.accessToken || !connection.refreshToken) {
+      return res.status(400).json({ error: "This shop's Square connection is missing an access token." });
+    }
+    const redirectUrl = `${paymentReturnBaseUrl()}/square?ourToken=${ourToken}`;
+    const url = await withSquareAutoRefresh(
+      connection.accessToken,
+      connection.refreshToken,
+      async (freshToken) => {
+        connection.accessToken = freshToken;
+        await connection.save();
+      },
+      (token) => createSquarePaymentLink(token, chargeAmount, redirectUrl)
+    );
+    return res.json({ url, mode: "square" });
+  }
+
+  // paypal
+  const url = await createPaypalOrder(
+    connection.connectedAccountId,
+    chargeAmount,
+    `${paymentReturnBaseUrl()}/paypal?ourToken=${ourToken}`,
+    `${paymentReturnBaseUrl()}/paypal-cancel`
+  );
+  res.json({ url, mode: "paypal" });
 });
 
 export default router;
