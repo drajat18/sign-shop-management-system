@@ -496,6 +496,16 @@ export default function OrderDetailModal({
                             onChange={(e) => handleFileChange(item.id, e.target.files?.[0] ?? null)}
                           />
                         </label>
+                        <label className="file-input">
+                          Take photo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            disabled={busy}
+                            onChange={(e) => handleFileChange(item.id, e.target.files?.[0] ?? null)}
+                          />
+                        </label>
                         {storageOptions.length > 1 && (
                           <select
                             value={itemStorage[item.id] ?? "internal"}
@@ -601,6 +611,15 @@ export default function OrderDetailModal({
                       {newItem.file ? newItem.file.name : "Choose file…"}
                       <input
                         type="file"
+                        onChange={(e) => setNewItem({ ...newItem, file: e.target.files?.[0] ?? null })}
+                      />
+                    </label>
+                    <label className="file-input">
+                      Take photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
                         onChange={(e) => setNewItem({ ...newItem, file: e.target.files?.[0] ?? null })}
                       />
                     </label>
