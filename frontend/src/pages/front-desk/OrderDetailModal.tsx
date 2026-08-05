@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client.js";
 import { downloadArtwork, uploadArtwork } from "../../api/files.js";
 import { useAuth } from "../../auth/AuthContext.js";
+import { usePlan } from "../../auth/PlanContext.js";
 import { JobStatusBadge, OrderStatusBadge } from "../../components/StatusBadge.js";
 import type {
   NewOrderItemInput,
@@ -50,6 +51,7 @@ export default function OrderDetailModal({
   onChanged: () => void;
 }) {
   const { token } = useAuth();
+  const plan = usePlan();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAddItem, setShowAddItem] = useState(false);
@@ -205,7 +207,7 @@ export default function OrderDetailModal({
                 </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {editable && (
+                {editable && plan?.features.customer_portal && (
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
@@ -213,6 +215,11 @@ export default function OrderDetailModal({
                   >
                     {linkCopied ? "Link copied!" : "Copy customer link"}
                   </button>
+                )}
+                {editable && plan && !plan.features.customer_portal && (
+                  <span className="cell-muted" style={{ fontSize: 12 }}>
+                    Customer portal is a Growth+ feature
+                  </span>
                 )}
                 <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
                   ×

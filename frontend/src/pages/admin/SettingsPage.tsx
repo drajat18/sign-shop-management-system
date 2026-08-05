@@ -1,13 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import type {
   PaymentConnectionStatus,
   PaymentOAuthProvider,
+  SiteContent,
+  SiteService,
   StorageConnectionStatus,
   StorageOAuthProvider,
 } from "../../types/index.js";
+
+// Matches .field input's look for the handful of inputs in the Services
+// editor that aren't wrapped in a .field label (they sit in a custom grid
+// alongside buttons instead).
+const rawInputStyle: CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--color-border)",
+  fontSize: 14,
+  fontWeight: 400,
+  color: "var(--color-text)",
+  background: "var(--color-surface)",
+};
 
 const PROVIDER_LABEL: Record<StorageOAuthProvider, string> = {
   dropbox: "Dropbox",
@@ -131,6 +146,80 @@ export default function SettingsPage() {
       setPaymentError(err instanceof Error ? err.message : "Failed to disconnect");
     } finally {
       setBusyPaymentProvider(null);
+    }
+  }
+
+  const [site, setSite] = useState<SiteContent | null>(null);
+  const [siteError, setSiteError] = useState<string | null>(null);
+  const [siteSaving, setSiteSaving] = useState(false);
+  const [siteSaved, setSiteSaved] = useState(false);
+
+  useEffect(() => {
+    apiFetch<SiteContent>("/settings/site", { token }).then(setSite).catch(console.error);
+  }, [token]);
+
+  function updateSiteField<K extends keyof SiteContent>(field: K, value: SiteContent[K]) {
+    setSite((prev) => (prev ? { ...prev, [field]: value } : prev));
+    setSiteSaved(false);
+  }
+
+  function updateService(index: number, patch: Partial<SiteService>) {
+    setSite((prev) => {
+      if (!prev) return prev;
+      const services = prev.services.map((s, i) => (i === index ? { ...s, ...patch } : s));
+      return { ...prev, services };
+    });
+    setSiteSaved(false);
+  }
+
+  function moveService(index: number, direction: -1 | 1) {
+    setSite((prev) => {
+      if (!prev) return prev;
+      const target = index + direction;
+      if (target < 0 || target >= prev.services.length) return prev;
+      const services = [...prev.services];
+      [services[index], services[target]] = [services[target], services[index]];
+      return { ...prev, services: services.map((s, i) => ({ ...s, sortOrder: i })) };
+    });
+    setSiteSaved(false);
+  }
+
+  function removeService(index: number) {
+    setSite((prev) => (prev ? { ...prev, services: prev.services.filter((_, i) => i !== index) } : prev));
+    setSiteSaved(false);
+  }
+
+  function addService() {
+    setSite((prev) =>
+      prev
+        ? {
+            ...prev,
+            services: [
+              ...prev.services,
+              { key: "", title: "New service", description: "", enabled: true, sortOrder: prev.services.length },
+            ],
+          }
+        : prev
+    );
+    setSiteSaved(false);
+  }
+
+  async function saveSite() {
+    if (!site) return;
+    setSiteError(null);
+    setSiteSaving(true);
+    try {
+      const saved = await apiFetch<SiteContent>("/settings/site", {
+        method: "PUT",
+        token,
+        body: JSON.stringify(site),
+      });
+      setSite(saved);
+      setSiteSaved(true);
+    } catch (err) {
+      setSiteError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSiteSaving(false);
     }
   }
 
@@ -308,6 +397,150 @@ export default function SettingsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 24, marginTop: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Public website</h2>
+        <p className="cell-muted" style={{ marginBottom: 16 }}>
+          What customers see on your public services page — edit the details and the services you
+          offer, then save.
+        </p>
+
+        {siteError && <p className="form-error" style={{ marginBottom: 16 }}>{siteError}</p>}
+        {siteSaved && (
+          <p className="cell-muted" style={{ marginBottom: 16, color: "var(--color-success)" }}>
+            Saved.
+          </p>
+        )}
+
+        {site === null ? (
+          <p className="cell-muted">Loading…</p>
+        ) : (
+          <div style={{ display: "grid", gap: 16 }}>
+            <label className="field" style={{ marginBottom: 0 }}>
+              Tagline
+              <input
+                value={site.tagline}
+                onChange={(e) => updateSiteField("tagline", e.target.value)}
+                placeholder="Custom signs, banners, and vehicle graphics done right."
+              />
+            </label>
+
+            <label className="field" style={{ marginBottom: 0 }}>
+              About
+              <textarea rows={3} value={site.aboutText} onChange={(e) => updateSiteField("aboutText", e.target.value)} />
+            </label>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <label className="field" style={{ marginBottom: 0 }}>
+                Phone
+                <input value={site.phone} onChange={(e) => updateSiteField("phone", e.target.value)} />
+              </label>
+              <label className="field" style={{ marginBottom: 0 }}>
+                Email
+                <input value={site.email} onChange={(e) => updateSiteField("email", e.target.value)} />
+              </label>
+              <label className="field" style={{ marginBottom: 0 }}>
+                Address
+                <input value={site.address} onChange={(e) => updateSiteField("address", e.target.value)} />
+              </label>
+              <label className="field" style={{ marginBottom: 0 }}>
+                Hours
+                <input
+                  value={site.hours}
+                  onChange={(e) => updateSiteField("hours", e.target.value)}
+                  placeholder="Mon-Fri 8am-5pm"
+                />
+              </label>
+            </div>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={site.published}
+                onChange={(e) => updateSiteField("published", e.target.checked)}
+              />
+              Published (visible to the public)
+            </label>
+
+            <div>
+              <p style={{ fontWeight: 600, marginBottom: 8 }}>Services</p>
+              <div style={{ display: "grid", gap: 12 }}>
+                {site.services.map((service, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      padding: 16,
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        style={{ ...rawInputStyle, flex: 1 }}
+                        value={service.title}
+                        onChange={(e) => updateService(index, { title: e.target.value })}
+                      />
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                        <input
+                          type="checkbox"
+                          checked={service.enabled}
+                          onChange={(e) => updateService(index, { enabled: e.target.checked })}
+                        />
+                        <span className="cell-muted" style={{ fontSize: 13 }}>Enabled</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => moveService(index, -1)}
+                        disabled={index === 0}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => moveService(index, 1)}
+                        disabled={index === site.services.length - 1}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => removeService(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <textarea
+                      style={rawInputStyle}
+                      rows={2}
+                      value={service.description}
+                      onChange={(e) => updateService(index, { description: e.target.value })}
+                    />
+                  </div>
+                ))}
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 12 }} onClick={addService}>
+                Add service
+              </button>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={saveSite}
+                disabled={siteSaving}
+              >
+                {siteSaving ? "Saving…" : "Save website"}
+              </button>
+            </div>
           </div>
         )}
       </div>

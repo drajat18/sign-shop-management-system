@@ -1,14 +1,20 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
+import { usePlan } from "../auth/PlanContext.js";
 import { NAV_ITEMS, ROLE_LABEL } from "../auth/roles.js";
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  const plan = usePlan();
   const navigate = useNavigate();
 
   if (!user) return null;
 
-  const links = NAV_ITEMS.filter((item) => item.roles.includes(user.role));
+  // Reports is Growth+ — held back until the plan loads rather than
+  // flashing the link and then yanking it away a moment later.
+  const links = NAV_ITEMS.filter((item) => item.roles.includes(user.role)).filter(
+    (item) => item.to !== "/reports" || plan?.features.reports === true
+  );
 
   function handleLogout() {
     logout();

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
+import { usePlan } from "../../auth/PlanContext.js";
 import { CustomerResponseBadge, JobStatusBadge } from "../../components/StatusBadge.js";
 import OrderDetailModal from "../front-desk/OrderDetailModal.js";
 import JobTicketModal from "./JobTicketModal.js";
@@ -12,6 +13,7 @@ const JOB_STATUSES: JobStatus[] = ["queued", "in_progress", "blocked", "done"];
 
 export default function JobsPage() {
   const { token, user } = useAuth();
+  const plan = usePlan();
   const [jobs, setJobs] = useState<ProductionJob[] | null>(null);
   const [assignable, setAssignable] = useState<{ id: string; name: string }[]>([]);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
@@ -174,13 +176,15 @@ export default function JobsPage() {
                     >
                       View order
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => setTicketJob(job)}
-                    >
-                      Print ticket
-                    </button>
+                    {plan?.features.qr_tickets && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => setTicketJob(job)}
+                      >
+                        Print ticket
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -69,6 +69,27 @@ export interface PaymentConnectionStatus {
   connectedAt?: string;
 }
 
+export interface SiteService {
+  key: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+export interface SiteContent {
+  tagline: string;
+  aboutText: string;
+  phone: string;
+  email: string;
+  address: string;
+  hours: string;
+  logoUrl: string;
+  heroImageUrl: string;
+  published: boolean;
+  services: SiteService[];
+}
+
 export interface DummyPaymentConnectInfo {
   shopName: string;
   provider: PaymentOAuthProvider;
@@ -129,6 +150,17 @@ export interface PlatformTeamMember {
 
 export type PlanTier = "starter" | "growth" | "pro";
 export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled";
+
+export interface ShopPlan {
+  planTier: PlanTier;
+  employeeLimit: number | null;
+  employeeCount: number;
+  features: {
+    reports: boolean;
+    customer_portal: boolean;
+    qr_tickets: boolean;
+  };
+}
 
 export interface Shop {
   id: string;

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout.js";
 import PlatformLayout from "./components/PlatformLayout.js";
 import { useAuth } from "./auth/AuthContext.js";
+import { usePlan } from "./auth/PlanContext.js";
 import { usePlatformAuth } from "./auth/PlatformAuthContext.js";
 import { PAGE_ACCESS, ROLE_LANDING_PAGE, canAccess } from "./auth/roles.js";
 import EmployeesPage from "./pages/admin/EmployeesPage.js";
@@ -30,6 +31,7 @@ function guarded(role: Role, allowed: Role[], element: ReactElement, landing: st
 
 export default function App() {
   const { user } = useAuth();
+  const plan = usePlan();
   const { user: platformUser } = usePlatformAuth();
 
   // Fully public, no auth of any kind — a customer's link is the only
@@ -94,7 +96,14 @@ export default function App() {
         <Route path="/orders" element={guarded(user.role, PAGE_ACCESS.orders, <OrdersPage />, landing)} />
         <Route path="/jobs" element={guarded(user.role, PAGE_ACCESS.jobs, <JobsPage />, landing)} />
         <Route path="/employees" element={guarded(user.role, PAGE_ACCESS.employees, <EmployeesPage />, landing)} />
-        <Route path="/reports" element={guarded(user.role, PAGE_ACCESS.reports, <ReportsPage />, landing)} />
+        <Route
+          path="/reports"
+          element={
+            plan && !plan.features.reports
+              ? <Navigate to={landing} replace />
+              : guarded(user.role, PAGE_ACCESS.reports, <ReportsPage />, landing)
+          }
+        />
         <Route path="/admin" element={guarded(user.role, PAGE_ACCESS.settings, <SettingsPage />, landing)} />
       </Route>
       <Route path="*" element={<Navigate to={landing} replace />} />

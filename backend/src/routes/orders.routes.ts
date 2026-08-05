@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
+import { requirePlanFeature } from "../middleware/requirePlanFeature.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { getStripe } from "../services/billing/stripe.js";
 import { recomputeOrderTotal } from "../services/orderTotals.js";
@@ -209,25 +210,30 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
 // none exists yet (or the previous one expired). Reusing the same link on
 // repeat calls means re-copying it for the customer never breaks a copy
 // they may have already bookmarked.
-router.post("/:id/portal-link", requireRole("admin", "manager", "front_desk"), async (req, res) => {
-  const { Order, CustomerPortalToken } = req.models!;
-  const order = await Order.findById(req.params.id);
-  if (!order) return res.status(404).json({ error: "Order not found" });
+router.post(
+  "/:id/portal-link",
+  requireRole("admin", "manager", "front_desk"),
+  requirePlanFeature("customer_portal"),
+  async (req, res) => {
+    const { Order, CustomerPortalToken } = req.models!;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
-  let tokenRecord = await CustomerPortalToken.findOne({
-    order: order._id,
-    expiresAt: { $gt: new Date() },
-  });
-  if (!tokenRecord) {
-    tokenRecord = await CustomerPortalToken.create({
+    let tokenRecord = await CustomerPortalToken.findOne({
       order: order._id,
-      token: crypto.randomBytes(24).toString("base64url"),
-      expiresAt: new Date(Date.now() + PORTAL_LINK_TTL_MS),
+      expiresAt: { $gt: new Date() },
     });
-  }
+    if (!tokenRecord) {
+      tokenRecord = await CustomerPortalToken.create({
+        order: order._id,
+        token: crypto.randomBytes(24).toString("base64url"),
+        expiresAt: new Date(Date.now() + PORTAL_LINK_TTL_MS),
+      });
+    }
 
-  res.json({ url: `${process.env.FRONTEND_URL}/portal/${req.auth!.shopId}/${tokenRecord.token}` });
-});
+    res.json({ url: `${process.env.FRONTEND_URL}/portal/${req.auth!.shopId}/${tokenRecord.token}` });
+  }
+);
 
 // Returns a payment link for this order, charged through the shop's own
 // connected payment processor — the platform never touches this money.

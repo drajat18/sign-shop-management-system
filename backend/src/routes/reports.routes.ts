@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
+import { requirePlanFeature } from "../middleware/requirePlanFeature.js";
 import { requireRole } from "../middleware/requireRole.js";
 
 const router = Router();
 
 // Matches the design doc's promise that Owner/Admin gets "reports" as part
 // of full access — everyone else has no reason to see shop-wide financials.
-router.use(requireAuth, requireRole("admin"));
+// Growth plan and up — Starter doesn't include reporting.
+router.use(requireAuth, requireRole("admin"), requirePlanFeature("reports"));
 
 router.get("/summary", async (req, res) => {
   const { Order, ProductionJob } = req.models!;

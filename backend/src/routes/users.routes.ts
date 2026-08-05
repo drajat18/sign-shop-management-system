@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import ShopUserIndex from "../models/platform/ShopUserIndex.js";
+import { EMPLOYEE_LIMITS, getShopPlanTier } from "../services/planLimits.js";
 import { ROLES } from "../types/roles.js";
 
 const router = Router();
@@ -44,6 +45,18 @@ router.post("/", async (req, res) => {
   }
   if (password.length < 8) {
     return res.status(400).json({ error: "password must be at least 8 characters" });
+  }
+
+  const planTier = await getShopPlanTier(req.auth!.shopId);
+  const seatLimit = EMPLOYEE_LIMITS[planTier];
+  if (seatLimit !== null) {
+    const activeCount = await req.models!.User.countDocuments({ active: true });
+    if (activeCount >= seatLimit) {
+      return res.status(403).json({
+        error: `The ${planTier} plan is limited to ${seatLimit} active employees. Deactivate someone or upgrade to add more.`,
+        upgradeRequired: true,
+      });
+    }
   }
 
   const normalizedEmail = email.toLowerCase();
