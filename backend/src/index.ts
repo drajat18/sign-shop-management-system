@@ -35,7 +35,28 @@ import stripeWebhookRoutes from "./routes/stripeWebhook.routes.js";
 import usersRoutes from "./routes/users.routes.js";
 
 const app = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN }));
+
+// CORS_ORIGIN covers the stable production domain (comma-separate for more
+// than one). Vercel additionally gives every deploy — preview or
+// production — its own unique subdomain, so this project's own *.vercel.app
+// deployments are allowed on top of that instead of needing a Render env
+// var update every time a new deploy URL shows up.
+const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const VERCEL_PREVIEW_PATTERN = /^https:\/\/sign-shop-management-system(-[a-z0-9-]+)?\.vercel\.app$/;
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin) || VERCEL_PREVIEW_PATTERN.test(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error("Not allowed by CORS"));
+    },
+  })
+);
 
 // Mounted with a raw-body parser, and before the global express.json()
 // below, since Stripe's webhook signature is computed over the exact bytes
