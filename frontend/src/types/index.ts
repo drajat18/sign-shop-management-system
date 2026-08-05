@@ -89,6 +89,8 @@ export interface OrderItem {
   description?: string;
   quantity: number;
   price: number;
+  materialCostEstimate?: number;
+  materialCostVendor?: string;
   artworkFile?: ArtworkFile | null;
   job?: {
     id: string;
@@ -109,6 +111,21 @@ export interface NewOrderItemInput {
   quantity: number;
   price: number;
   file?: File | null;
+  materialCostEstimate?: number;
+  materialCostVendor?: string;
+}
+
+export interface MaterialVendorQuote {
+  vendor: string;
+  costPerUnit: number;
+}
+
+export interface MaterialCostEstimate {
+  material: string;
+  costPerUnit: number;
+  totalCost: number;
+  bestVendor: string;
+  quotes: MaterialVendorQuote[];
 }
 
 export type PlatformRole = "owner" | "support" | "billing" | "onboarding";

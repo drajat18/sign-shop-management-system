@@ -12,21 +12,31 @@ router.patch("/:id", async (req, res) => {
   const item = await OrderItem.findById(req.params.id);
   if (!item) return res.status(404).json({ error: "Item not found" });
 
-  const { signType, size, material, description, quantity, price } = req.body as {
-    signType?: string;
-    size?: string;
-    material?: string;
-    description?: string;
-    quantity?: number;
-    price?: number;
-  };
+  const { signType, size, material, description, quantity, price, materialCostEstimate, materialCostVendor } =
+    req.body as {
+      signType?: string;
+      size?: string;
+      material?: string;
+      description?: string;
+      quantity?: number;
+      price?: number;
+      materialCostEstimate?: number;
+      materialCostVendor?: string;
+    };
 
   Object.assign(
     item,
     Object.fromEntries(
-      Object.entries({ signType, size, material, description, quantity, price }).filter(
-        ([, v]) => v !== undefined
-      )
+      Object.entries({
+        signType,
+        size,
+        material,
+        description,
+        quantity,
+        price,
+        materialCostEstimate,
+        materialCostVendor,
+      }).filter(([, v]) => v !== undefined)
     )
   );
   await item.save();

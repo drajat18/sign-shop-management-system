@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { uploadArtwork } from "../../api/files.js";
 import { apiFetch } from "../../api/client.js";
+import { estimateMaterialCost } from "../../api/materialCost.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import CameraCaptureModal from "../../components/CameraCaptureModal.js";
 import type { Customer, NewOrderItemInput, OrderItem } from "../../types/index.js";
@@ -35,6 +36,7 @@ export default function NewOrderModal({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [cameraTargetIndex, setCameraTargetIndex] = useState<number | null>(null);
+  const [materialCostBusy, setMaterialCostBusy] = useState<number | null>(null);
 
   useEffect(() => {
     apiFetch<Customer[]>("/customers", { token })
@@ -51,6 +53,24 @@ export default function NewOrderModal({
 
   function removeItem(index: number) {
     setItems((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  }
+
+  async function handleCheckPricing(index: number) {
+    const item = items[index];
+    if (!item.material?.trim()) return;
+    setMaterialCostBusy(index);
+    setError(null);
+    try {
+      const estimate = await estimateMaterialCost(
+        { material: item.material, size: item.size, quantity: item.quantity },
+        token
+      );
+      updateItem(index, { materialCostEstimate: estimate.totalCost, materialCostVendor: estimate.bestVendor });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to check material pricing");
+    } finally {
+      setMaterialCostBusy(null);
+    }
   }
 
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -256,6 +276,25 @@ export default function NewOrderModal({
                 </label>
               </div>
 
+              <div className="field item-file-field">
+                Material cost estimate
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => handleCheckPricing(i)}
+                    disabled={!item.material?.trim() || materialCostBusy === i}
+                  >
+                    {materialCostBusy === i ? "Checking…" : "Check pricing"}
+                  </button>
+                  {item.materialCostEstimate !== undefined && (
+                    <span className="cell-muted" style={{ fontSize: 13 }}>
+                      Est. ${item.materialCostEstimate.toFixed(2)} (via {item.materialCostVendor} — simulated)
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <div className="field item-description-field">
                 Item description
                 <textarea
@@ -291,6 +330,13 @@ export default function NewOrderModal({
           >
             + Add item
           </button>
+
+          {items.some((i) => i.materialCostEstimate !== undefined) && (
+            <p className="cell-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+              Estimated material cost: $
+              {items.reduce((sum, i) => sum + (i.materialCostEstimate ?? 0), 0).toFixed(2)} (simulated)
+            </p>
+          )}
 
           <div className="order-total">
             <span>Total</span>

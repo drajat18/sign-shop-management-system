@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client.js";
 import { downloadArtwork, uploadArtwork } from "../../api/files.js";
+import { estimateMaterialCost } from "../../api/materialCost.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { usePlan } from "../../auth/PlanContext.js";
 import CameraCaptureModal from "../../components/CameraCaptureModal.js";
@@ -8,6 +9,7 @@ import { JobStatusBadge, OrderStatusBadge } from "../../components/StatusBadge.j
 import type {
   NewOrderItemInput,
   OrderDetail,
+  OrderItem,
   OrderStatus,
   PaymentConnectionStatus,
   PaymentOAuthProvider,
@@ -64,6 +66,7 @@ export default function OrderDetailModal({
   const [cameraTarget, setCameraTarget] = useState<{ kind: "item"; itemId: string } | { kind: "newItem" } | null>(
     null
   );
+  const [materialCostBusy, setMaterialCostBusy] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [paymentConnected, setPaymentConnected] = useState(false);
   const [chargeAmount, setChargeAmount] = useState<number | null>(null);
@@ -130,6 +133,26 @@ export default function OrderDetailModal({
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleCheckPricing(item: OrderItem) {
+    if (!item.material?.trim()) return;
+    setMaterialCostBusy(item.id);
+    setError(null);
+    try {
+      const estimate = await estimateMaterialCost(
+        { material: item.material, size: item.size, quantity: item.quantity },
+        token
+      );
+      await patchItem(item.id, {
+        materialCostEstimate: estimate.totalCost,
+        materialCostVendor: estimate.bestVendor,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to check material pricing");
+    } finally {
+      setMaterialCostBusy(null);
     }
   }
 
@@ -459,6 +482,27 @@ export default function OrderDetailModal({
                   </p>
                 )}
 
+                <div className="field item-file-field">
+                  Material cost estimate
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    {editable && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleCheckPricing(item)}
+                        disabled={!item.material?.trim() || materialCostBusy === item.id}
+                      >
+                        {materialCostBusy === item.id ? "Checking…" : "Check pricing"}
+                      </button>
+                    )}
+                    {item.materialCostEstimate !== undefined && (
+                      <span className="cell-muted" style={{ fontSize: 13 }}>
+                        Est. ${item.materialCostEstimate.toFixed(2)} (via {item.materialCostVendor} — simulated)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
                 <div className="field item-description-field">
                   Item description
                   {editable ? (
@@ -648,6 +692,13 @@ export default function OrderDetailModal({
                   </button>
                 </div>
               </div>
+            )}
+
+            {order.items.some((i) => i.materialCostEstimate !== undefined) && (
+              <p className="cell-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+                Estimated material cost: $
+                {order.items.reduce((sum, i) => sum + (i.materialCostEstimate ?? 0), 0).toFixed(2)} (simulated)
+              </p>
             )}
 
             <div className="order-total">

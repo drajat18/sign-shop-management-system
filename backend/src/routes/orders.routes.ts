@@ -23,6 +23,8 @@ interface NewOrderItem {
   description?: string;
   quantity?: number;
   price: number;
+  materialCostEstimate?: number;
+  materialCostVendor?: string;
 }
 
 const router = Router();
@@ -115,6 +117,8 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
       description: item.description,
       quantity: item.quantity ?? 1,
       price: item.price,
+      materialCostEstimate: item.materialCostEstimate,
+      materialCostVendor: item.materialCostVendor,
     }))
   );
 
@@ -139,7 +143,8 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found" });
 
-  const { signType, size, material, description, quantity, price } = req.body as NewOrderItem;
+  const { signType, size, material, description, quantity, price, materialCostEstimate, materialCostVendor } =
+    req.body as NewOrderItem;
   if (!signType || typeof price !== "number") {
     return res.status(400).json({ error: "signType and a numeric price are required" });
   }
@@ -152,6 +157,8 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
     description,
     quantity: quantity ?? 1,
     price,
+    materialCostEstimate,
+    materialCostVendor,
   });
   const job = await ProductionJob.create({ orderItem: item._id, status: "queued" });
   await recomputeOrderTotal(req.models!, order.id);
