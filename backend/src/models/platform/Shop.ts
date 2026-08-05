@@ -19,6 +19,13 @@ const shopSchema = new Schema(
     // for shops still on the default "trialing" status pre-payment.
     stripeCustomerId: String,
     stripeSubscriptionId: String,
+    // Count of +25GB storage add-on units purchased, stackable on top of
+    // the plan tier's base quota, independent of which tier the shop is on.
+    storageAddons: { type: Number, default: 0 },
+    // Real-Stripe subscription IDs backing each purchased add-on unit, so
+    // the webhook can tell which one was cancelled and decrement precisely.
+    // Empty for shops on the dummy billing fallback.
+    storageAddonSubscriptionIds: { type: [String], default: [] },
   },
   { timestamps: true }
 );

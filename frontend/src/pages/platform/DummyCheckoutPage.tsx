@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import type { DummyCheckoutSession } from "../../types/index.js";
 
 // Stand-in for a real Stripe Checkout page — only ever reachable when the
 // platform hasn't configured Stripe yet (see billing-link in
-// shops.routes.ts). Confirming here flips the shop's plan/status exactly
-// like the real Stripe webhook would, so the whole billing loop is
-// testable without any external account.
+// shops.routes.ts / checkout-link in settingsBilling.routes.ts). Confirming
+// here flips the shop's plan/status (or storage add-on count) exactly like
+// the real Stripe webhook would, so the whole billing loop is testable
+// without any external account.
 export default function DummyCheckoutPage() {
   const { token } = useParams<{ token: string }>();
   const [session, setSession] = useState<DummyCheckoutSession | null>(null);
@@ -77,15 +78,24 @@ export default function DummyCheckoutPage() {
         </span>
         <h1 className="auth-title">{session.shopName}</h1>
         <p className="auth-subtitle">
-          {session.planTier.charAt(0).toUpperCase() + session.planTier.slice(1)} plan — $
+          {session.kind === "storage_addon"
+            ? "+25GB storage add-on"
+            : `${(session.planTier ?? "").charAt(0).toUpperCase()}${(session.planTier ?? "").slice(1)} plan`}
+          {" — $"}
           {session.priceUsd.toFixed(2)}/month
         </p>
 
         {done ? (
-          <p className="cell-muted" style={{ marginTop: 20, fontSize: 14 }}>
-            Test subscription activated. This shop's plan and status have been updated — no card was
-            charged.
-          </p>
+          <>
+            <p className="cell-muted" style={{ marginTop: 20, fontSize: 14 }}>
+              {session.kind === "storage_addon"
+                ? "Test storage add-on activated. This shop's storage limit has been increased — no card was charged."
+                : "Test subscription activated. This shop's plan and status have been updated — no card was charged."}
+            </p>
+            <Link to="/admin?billing=success" className="btn btn-outline btn-block" style={{ marginTop: 12 }}>
+              Return to Settings
+            </Link>
+          </>
         ) : (
           <button
             type="button"

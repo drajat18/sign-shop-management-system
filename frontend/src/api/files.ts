@@ -1,5 +1,5 @@
 import { apiFetch } from "./client.js";
-import type { ArtworkFile, StorageProvider } from "../types/index.js";
+import type { ArtworkFile, FileGalleryResponse, StorageProvider } from "../types/index.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -36,6 +36,10 @@ export async function uploadArtwork(
       data,
     }),
   });
+}
+
+export async function listFiles(token: string | null): Promise<FileGalleryResponse> {
+  return apiFetch<FileGalleryResponse>("/files", { token });
 }
 
 export async function getDownloadUrl(

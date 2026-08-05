@@ -1,28 +1,17 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
+import { usePlan, usePlanRefetch } from "../../auth/PlanContext.js";
 import type {
+  CheckoutLink,
   PaymentConnectionStatus,
   PaymentOAuthProvider,
-  SiteContent,
-  SiteService,
+  PlanTier,
   StorageConnectionStatus,
   StorageOAuthProvider,
 } from "../../types/index.js";
-
-// Matches .field input's look for the handful of inputs in the Services
-// editor that aren't wrapped in a .field label (they sit in a custom grid
-// alongside buttons instead).
-const rawInputStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--color-border)",
-  fontSize: 14,
-  fontWeight: 400,
-  color: "var(--color-text)",
-  background: "var(--color-surface)",
-};
+import { formatBytes } from "../../utils/bytes.js";
 
 const PROVIDER_LABEL: Record<StorageOAuthProvider, string> = {
   dropbox: "Dropbox",
@@ -34,6 +23,12 @@ const PAYMENT_PROVIDER_LABEL: Record<PaymentOAuthProvider, string> = {
   square: "Square",
   paypal: "PayPal",
 };
+
+const PLAN_OPTIONS: { value: PlanTier; label: string }[] = [
+  { value: "starter", label: "Starter — $59.99/mo, up to 3 employees, 5GB storage" },
+  { value: "growth", label: "Growth — $119.99/mo, up to 10 employees, 25GB storage" },
+  { value: "pro", label: "Pro — $199.99/mo, unlimited employees, 100GB storage" },
+];
 
 type StatusResponse = Record<StorageOAuthProvider, StorageConnectionStatus>;
 type PaymentStatusResponse = Record<PaymentOAuthProvider, PaymentConnectionStatus>;
@@ -149,77 +144,54 @@ export default function SettingsPage() {
     }
   }
 
-  const [site, setSite] = useState<SiteContent | null>(null);
-  const [siteError, setSiteError] = useState<string | null>(null);
-  const [siteSaving, setSiteSaving] = useState(false);
-  const [siteSaved, setSiteSaved] = useState(false);
+  const plan = usePlan();
+  const refetchPlan = usePlanRefetch();
+  const [billingTier, setBillingTier] = useState<PlanTier>(plan?.planTier ?? "starter");
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingBusy, setBillingBusy] = useState<"plan" | "storage" | null>(null);
 
   useEffect(() => {
-    apiFetch<SiteContent>("/settings/site", { token }).then(setSite).catch(console.error);
-  }, [token]);
+    if (plan) setBillingTier(plan.planTier);
+  }, [plan]);
 
-  function updateSiteField<K extends keyof SiteContent>(field: K, value: SiteContent[K]) {
-    setSite((prev) => (prev ? { ...prev, [field]: value } : prev));
-    setSiteSaved(false);
-  }
+  const billingRedirectResult = searchParams.get("billing");
 
-  function updateService(index: number, patch: Partial<SiteService>) {
-    setSite((prev) => {
-      if (!prev) return prev;
-      const services = prev.services.map((s, i) => (i === index ? { ...s, ...patch } : s));
-      return { ...prev, services };
-    });
-    setSiteSaved(false);
-  }
+  useEffect(() => {
+    if (billingRedirectResult) {
+      refetchPlan();
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billingRedirectResult]);
 
-  function moveService(index: number, direction: -1 | 1) {
-    setSite((prev) => {
-      if (!prev) return prev;
-      const target = index + direction;
-      if (target < 0 || target >= prev.services.length) return prev;
-      const services = [...prev.services];
-      [services[index], services[target]] = [services[target], services[index]];
-      return { ...prev, services: services.map((s, i) => ({ ...s, sortOrder: i })) };
-    });
-    setSiteSaved(false);
-  }
-
-  function removeService(index: number) {
-    setSite((prev) => (prev ? { ...prev, services: prev.services.filter((_, i) => i !== index) } : prev));
-    setSiteSaved(false);
-  }
-
-  function addService() {
-    setSite((prev) =>
-      prev
-        ? {
-            ...prev,
-            services: [
-              ...prev.services,
-              { key: "", title: "New service", description: "", enabled: true, sortOrder: prev.services.length },
-            ],
-          }
-        : prev
-    );
-    setSiteSaved(false);
-  }
-
-  async function saveSite() {
-    if (!site) return;
-    setSiteError(null);
-    setSiteSaving(true);
+  async function handleChangePlan() {
+    setBillingError(null);
+    setBillingBusy("plan");
     try {
-      const saved = await apiFetch<SiteContent>("/settings/site", {
-        method: "PUT",
+      const { url } = await apiFetch<CheckoutLink>("/settings/billing/checkout-link", {
+        method: "POST",
         token,
-        body: JSON.stringify(site),
+        body: JSON.stringify({ planTier: billingTier }),
       });
-      setSite(saved);
-      setSiteSaved(true);
+      window.location.href = url;
     } catch (err) {
-      setSiteError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSiteSaving(false);
+      setBillingError(err instanceof Error ? err.message : "Failed to start checkout");
+      setBillingBusy(null);
+    }
+  }
+
+  async function handleBuyStorage() {
+    setBillingError(null);
+    setBillingBusy("storage");
+    try {
+      const { url } = await apiFetch<CheckoutLink>("/settings/billing/storage-addon-link", {
+        method: "POST",
+        token,
+      });
+      window.location.href = url;
+    } catch (err) {
+      setBillingError(err instanceof Error ? err.message : "Failed to start checkout");
+      setBillingBusy(null);
     }
   }
 
@@ -230,6 +202,101 @@ export default function SettingsPage() {
           <h1 className="page-title">Settings</h1>
           <p className="page-subtitle">Shop-wide configuration and integrations.</p>
         </div>
+      </div>
+
+      <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Plan & billing</h2>
+        <p className="cell-muted" style={{ marginBottom: 16 }}>
+          Your current plan, seat usage, and storage — upgrade, downgrade, or add more storage any
+          time.
+        </p>
+
+        {billingRedirectResult === "cancelled" && (
+          <p className="cell-muted" style={{ marginBottom: 16 }}>
+            Checkout was cancelled — nothing changed.
+          </p>
+        )}
+        {billingError && <p className="form-error" style={{ marginBottom: 16 }}>{billingError}</p>}
+
+        {plan === null ? (
+          <p className="cell-muted">Loading…</p>
+        ) : (
+          <div style={{ display: "grid", gap: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span className="badge badge-order-completed">
+                {plan.planTier.charAt(0).toUpperCase() + plan.planTier.slice(1)} — {plan.subscriptionStatus}
+              </span>
+              <span className="cell-muted" style={{ fontSize: 13 }}>
+                {plan.employeeCount} / {plan.employeeLimit ?? "unlimited"} employees
+              </span>
+            </div>
+
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Storage</span>
+                <span className="cell-muted" style={{ fontSize: 13 }}>
+                  {formatBytes(plan.storage.usedBytes)} / {formatBytes(plan.storage.limitBytes)}
+                  {plan.storage.addonUnits > 0 &&
+                    ` (includes ${plan.storage.addonUnits} × ${plan.storage.addonUnitGb}GB add-on${plan.storage.addonUnits > 1 ? "s" : ""})`}
+                </span>
+              </div>
+              <div
+                style={{
+                  height: 8,
+                  borderRadius: 4,
+                  background: "var(--color-border)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${Math.min(100, (plan.storage.usedBytes / Math.max(1, plan.storage.limitBytes)) * 100)}%`,
+                    background: "var(--color-primary)",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <label className="field" style={{ flex: 1, minWidth: 260, marginBottom: 0 }}>
+                Change plan
+                <select value={billingTier} onChange={(e) => setBillingTier(e.target.value as PlanTier)}>
+                  {PLAN_OPTIONS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleChangePlan}
+                disabled={billingBusy !== null || billingTier === plan.planTier}
+              >
+                {billingBusy === "plan" ? "Redirecting…" : "Upgrade / downgrade"}
+              </button>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <p style={{ fontWeight: 600, marginBottom: 2 }}>Need more space?</p>
+                <p className="cell-muted" style={{ fontSize: 13 }}>
+                  Buy +25GB of storage for $9.99/mo, stackable, available on every plan.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={handleBuyStorage}
+                disabled={billingBusy !== null}
+              >
+                {billingBusy === "storage" ? "Redirecting…" : "Buy +25GB"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ padding: 24 }}>
@@ -397,150 +464,6 @@ export default function SettingsPage() {
                 </div>
               );
             })}
-          </div>
-        )}
-      </div>
-
-      <div className="card" style={{ padding: 24, marginTop: 24 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Public website</h2>
-        <p className="cell-muted" style={{ marginBottom: 16 }}>
-          What customers see on your public services page — edit the details and the services you
-          offer, then save.
-        </p>
-
-        {siteError && <p className="form-error" style={{ marginBottom: 16 }}>{siteError}</p>}
-        {siteSaved && (
-          <p className="cell-muted" style={{ marginBottom: 16, color: "var(--color-success)" }}>
-            Saved.
-          </p>
-        )}
-
-        {site === null ? (
-          <p className="cell-muted">Loading…</p>
-        ) : (
-          <div style={{ display: "grid", gap: 16 }}>
-            <label className="field" style={{ marginBottom: 0 }}>
-              Tagline
-              <input
-                value={site.tagline}
-                onChange={(e) => updateSiteField("tagline", e.target.value)}
-                placeholder="Custom signs, banners, and vehicle graphics done right."
-              />
-            </label>
-
-            <label className="field" style={{ marginBottom: 0 }}>
-              About
-              <textarea rows={3} value={site.aboutText} onChange={(e) => updateSiteField("aboutText", e.target.value)} />
-            </label>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <label className="field" style={{ marginBottom: 0 }}>
-                Phone
-                <input value={site.phone} onChange={(e) => updateSiteField("phone", e.target.value)} />
-              </label>
-              <label className="field" style={{ marginBottom: 0 }}>
-                Email
-                <input value={site.email} onChange={(e) => updateSiteField("email", e.target.value)} />
-              </label>
-              <label className="field" style={{ marginBottom: 0 }}>
-                Address
-                <input value={site.address} onChange={(e) => updateSiteField("address", e.target.value)} />
-              </label>
-              <label className="field" style={{ marginBottom: 0 }}>
-                Hours
-                <input
-                  value={site.hours}
-                  onChange={(e) => updateSiteField("hours", e.target.value)}
-                  placeholder="Mon-Fri 8am-5pm"
-                />
-              </label>
-            </div>
-
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600 }}>
-              <input
-                type="checkbox"
-                checked={site.published}
-                onChange={(e) => updateSiteField("published", e.target.checked)}
-              />
-              Published (visible to the public)
-            </label>
-
-            <div>
-              <p style={{ fontWeight: 600, marginBottom: 8 }}>Services</p>
-              <div style={{ display: "grid", gap: 12 }}>
-                {site.services.map((service, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                      padding: 16,
-                      border: "1px solid var(--color-border)",
-                      borderRadius: 8,
-                    }}
-                  >
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input
-                        style={{ ...rawInputStyle, flex: 1 }}
-                        value={service.title}
-                        onChange={(e) => updateService(index, { title: e.target.value })}
-                      />
-                      <label style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
-                        <input
-                          type="checkbox"
-                          checked={service.enabled}
-                          onChange={(e) => updateService(index, { enabled: e.target.checked })}
-                        />
-                        <span className="cell-muted" style={{ fontSize: 13 }}>Enabled</span>
-                      </label>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => moveService(index, -1)}
-                        disabled={index === 0}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => moveService(index, 1)}
-                        disabled={index === site.services.length - 1}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => removeService(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <textarea
-                      style={rawInputStyle}
-                      rows={2}
-                      value={service.description}
-                      onChange={(e) => updateService(index, { description: e.target.value })}
-                    />
-                  </div>
-                ))}
-              </div>
-              <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 12 }} onClick={addService}>
-                Add service
-              </button>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={saveSite}
-                disabled={siteSaving}
-              >
-                {siteSaving ? "Saving…" : "Save website"}
-              </button>
-            </div>
           </div>
         )}
       </div>

@@ -69,27 +69,6 @@ export interface PaymentConnectionStatus {
   connectedAt?: string;
 }
 
-export interface SiteService {
-  key: string;
-  title: string;
-  description: string;
-  enabled: boolean;
-  sortOrder: number;
-}
-
-export interface SiteContent {
-  tagline: string;
-  aboutText: string;
-  phone: string;
-  email: string;
-  address: string;
-  hours: string;
-  logoUrl: string;
-  heroImageUrl: string;
-  published: boolean;
-  services: SiteService[];
-}
-
 export interface DummyPaymentConnectInfo {
   shopName: string;
   provider: PaymentOAuthProvider;
@@ -153,6 +132,7 @@ export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled"
 
 export interface ShopPlan {
   planTier: PlanTier;
+  subscriptionStatus: SubscriptionStatus;
   employeeLimit: number | null;
   employeeCount: number;
   features: {
@@ -160,6 +140,37 @@ export interface ShopPlan {
     customer_portal: boolean;
     qr_tickets: boolean;
   };
+  storage: {
+    usedBytes: number;
+    limitBytes: number;
+    addonUnits: number;
+    addonUnitGb: number;
+  };
+}
+
+export interface CheckoutLink {
+  url: string;
+  mode: "stripe" | "dummy";
+}
+
+export interface FileGalleryItem {
+  id: string;
+  fileName: string;
+  storageProvider: StorageProvider;
+  fileSize: number;
+  createdAt: string;
+  uploadedBy?: { id: string; name: string } | null;
+  order?: {
+    id: string;
+    description?: string;
+    status: OrderStatus;
+    customer?: { name: string } | null;
+  } | null;
+}
+
+export interface FileGalleryResponse {
+  files: FileGalleryItem[];
+  usage: { usedBytes: number; limitBytes: number };
 }
 
 export interface Shop {
@@ -197,7 +208,8 @@ export interface PortalOrder {
 
 export interface DummyCheckoutSession {
   shopName: string;
-  planTier: PlanTier;
+  kind: "plan" | "storage_addon";
+  planTier?: PlanTier;
   priceUsd: number;
   completed: boolean;
 }
