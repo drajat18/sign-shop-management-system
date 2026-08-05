@@ -3,6 +3,7 @@ import { apiFetch } from "../../api/client.js";
 import { downloadArtwork, uploadArtwork } from "../../api/files.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { usePlan } from "../../auth/PlanContext.js";
+import CameraCaptureModal from "../../components/CameraCaptureModal.js";
 import { JobStatusBadge, OrderStatusBadge } from "../../components/StatusBadge.js";
 import type {
   NewOrderItemInput,
@@ -60,6 +61,9 @@ export default function OrderDetailModal({
   const [itemStorage, setItemStorage] = useState<Record<string, StorageProvider>>({});
   const [storageOptions, setStorageOptions] = useState<StorageProvider[]>(["internal"]);
   const [busy, setBusy] = useState(false);
+  const [cameraTarget, setCameraTarget] = useState<{ kind: "item"; itemId: string } | { kind: "newItem" } | null>(
+    null
+  );
   const [linkCopied, setLinkCopied] = useState(false);
   const [paymentConnected, setPaymentConnected] = useState(false);
   const [chargeAmount, setChargeAmount] = useState<number | null>(null);
@@ -496,16 +500,14 @@ export default function OrderDetailModal({
                             onChange={(e) => handleFileChange(item.id, e.target.files?.[0] ?? null)}
                           />
                         </label>
-                        <label className="file-input">
+                        <button
+                          type="button"
+                          className="file-input"
+                          disabled={busy}
+                          onClick={() => setCameraTarget({ kind: "item", itemId: item.id })}
+                        >
                           Take photo
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            disabled={busy}
-                            onChange={(e) => handleFileChange(item.id, e.target.files?.[0] ?? null)}
-                          />
-                        </label>
+                        </button>
                         {storageOptions.length > 1 && (
                           <select
                             value={itemStorage[item.id] ?? "internal"}
@@ -614,15 +616,13 @@ export default function OrderDetailModal({
                         onChange={(e) => setNewItem({ ...newItem, file: e.target.files?.[0] ?? null })}
                       />
                     </label>
-                    <label className="file-input">
+                    <button
+                      type="button"
+                      className="file-input"
+                      onClick={() => setCameraTarget({ kind: "newItem" })}
+                    >
                       Take photo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(e) => setNewItem({ ...newItem, file: e.target.files?.[0] ?? null })}
-                      />
-                    </label>
+                    </button>
                     {storageOptions.length > 1 && (
                       <select
                         value={newItemStorage}
@@ -656,6 +656,19 @@ export default function OrderDetailModal({
             </div>
 
             {error && <p className="form-error">{error}</p>}
+
+            {cameraTarget && (
+              <CameraCaptureModal
+                onCapture={(file) => {
+                  if (cameraTarget.kind === "item") {
+                    handleFileChange(cameraTarget.itemId, file);
+                  } else {
+                    setNewItem((prev) => ({ ...prev, file }));
+                  }
+                }}
+                onClose={() => setCameraTarget(null)}
+              />
+            )}
           </>
         )}
       </div>

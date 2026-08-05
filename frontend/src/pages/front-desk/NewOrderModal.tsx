@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { uploadArtwork } from "../../api/files.js";
 import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
+import CameraCaptureModal from "../../components/CameraCaptureModal.js";
 import type { Customer, NewOrderItemInput, OrderItem } from "../../types/index.js";
 
 const emptyItem = (): NewOrderItemInput => ({
@@ -33,6 +34,7 @@ export default function NewOrderModal({
   const [items, setItems] = useState<NewOrderItemInput[]>([emptyItem()]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cameraTargetIndex, setCameraTargetIndex] = useState<number | null>(null);
 
   useEffect(() => {
     apiFetch<Customer[]>("/customers", { token })
@@ -267,7 +269,7 @@ export default function NewOrderModal({
 
               <div className="field item-file-field">
                 Design file
-                <div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <label className="file-input">
                     {item.file ? item.file.name : "Choose file…"}
                     <input
@@ -275,6 +277,9 @@ export default function NewOrderModal({
                       onChange={(e) => updateItem(i, { file: e.target.files?.[0] ?? null })}
                     />
                   </label>
+                  <button type="button" className="file-input" onClick={() => setCameraTargetIndex(i)}>
+                    Take photo
+                  </button>
                 </div>
               </div>
             </div>
@@ -304,6 +309,13 @@ export default function NewOrderModal({
           </div>
         </form>
       </div>
+
+      {cameraTargetIndex !== null && (
+        <CameraCaptureModal
+          onCapture={(file) => updateItem(cameraTargetIndex, { file })}
+          onClose={() => setCameraTargetIndex(null)}
+        />
+      )}
     </div>
   );
 }
