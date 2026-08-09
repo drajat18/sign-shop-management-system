@@ -25,9 +25,9 @@ export function JobStatusBadge({ status }: { status: ProductionJob["status"] }) 
 
 const CUSTOMER_RESPONSE_LABEL = {
   approved: "Customer approved",
-  changes_requested: "Customer requested changes",
+  message: "New message from customer",
 } as const;
 
-export function CustomerResponseBadge({ type }: { type: "approved" | "changes_requested" }) {
+export function CustomerResponseBadge({ type }: { type: "approved" | "message" }) {
   return <span className={`badge badge-customer-${type}`}>{CUSTOMER_RESPONSE_LABEL[type]}</span>;
 }

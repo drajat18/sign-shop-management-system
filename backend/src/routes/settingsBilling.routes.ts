@@ -60,18 +60,26 @@ router.post("/checkout-link", async (req, res) => {
   res.json({ url: session.url, mode: "stripe" });
 });
 
-// Purchases one +25GB storage add-on unit, stackable regardless of plan
-// tier — same checkout shape as above, just a flat add-on price instead of
-// a tier price, and the completion effect increments storageAddons rather
-// than changing planTier (see billingDummy.routes.ts / stripeWebhook.routes.ts).
+// Purchases N +25GB storage add-on units in one checkout (default 1),
+// stackable regardless of plan tier — same checkout shape as above, just a
+// flat add-on price instead of a tier price, and the completion effect
+// increments storageAddons by `quantity` rather than changing planTier
+// (see billingDummy.routes.ts / stripeWebhook.routes.ts). Multi-unit
+// purchases exist mainly so a downgrade that would put a shop over its new
+// tier's storage limit can be covered in a single "buy enough to cover
+// this" click instead of N separate ones.
 router.post("/storage-addon-link", async (req, res) => {
   const shop = await Shop.findById(req.auth!.shopId);
   if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const rawQuantity = Number((req.body as { quantity?: number }).quantity);
+  const quantity = Number.isFinite(rawQuantity) && rawQuantity > 0 ? Math.floor(rawQuantity) : 1;
 
   if (!STRIPE_CONFIGURED) {
     const dummySession = await DummyCheckoutSession.create({
       shop: shop.id,
       kind: "storage_addon",
+      quantity,
       token: crypto.randomBytes(24).toString("base64url"),
       expiresAt: new Date(Date.now() + DUMMY_CHECKOUT_TTL_MS),
     });
@@ -88,7 +96,7 @@ router.post("/storage-addon-link", async (req, res) => {
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    line_items: [{ price: STORAGE_ADDON_PRICE_ID, quantity: 1 }],
+    line_items: [{ price: STORAGE_ADDON_PRICE_ID, quantity }],
     customer: shop.stripeCustomerId || undefined,
     client_reference_id: shop.id,
     metadata: { shopId: shop.id, kind: "storage_addon" },

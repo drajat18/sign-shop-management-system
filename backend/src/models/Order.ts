@@ -17,14 +17,12 @@ export const orderSchema = new Schema(
     total: { type: Number, default: 0 },
     paymentStatus: { type: String, enum: ["unpaid", "partial", "paid"], default: "unpaid" },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    // Latest "request changes" note left by the customer via their portal
-    // link — a single field rather than a thread, cleared by staff once
-    // addressed via the same PATCH used for every other order field.
-    customerComment: String,
-    // Set alongside customerComment whenever the customer takes an action on
-    // their portal link, so staff (including on the Production page, which
-    // has no customerComment text to show for a plain approval) know a
-    // response came in. Cleared the same way customerComment is.
+    // Lightweight "something needs a look" flag — the actual conversation
+    // lives in the OrderMessage collection (a real thread, not a single
+    // overwritable field). Set whenever the customer approves a design or
+    // sends a new message via their portal link; cleared automatically the
+    // moment staff open the order's message thread (GET /:id/messages),
+    // the same way opening a chat marks it read.
     customerResponseType: String,
   },
   { timestamps: true }

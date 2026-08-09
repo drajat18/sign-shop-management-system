@@ -1,8 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import { OrderStatusBadge } from "../../components/StatusBadge.js";
-import type { PortalOrder } from "../../types/index.js";
+import type { OrderMessage, PortalOrder } from "../../types/index.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -10,7 +10,8 @@ export default function CustomerPortalPage() {
   const { shopId, token } = useParams<{ shopId: string; token: string }>();
   const [order, setOrder] = useState<PortalOrder | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [comment, setComment] = useState("");
+  const [messages, setMessages] = useState<OrderMessage[] | null>(null);
+  const [messageBody, setMessageBody] = useState("");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,7 +25,12 @@ export default function CustomerPortalPage() {
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load order"));
   }
 
+  function loadMessages() {
+    apiFetch<OrderMessage[]>(`/portal/${shopId}/${token}/messages`).then(setMessages).catch(console.error);
+  }
+
   useEffect(load, [shopId, token]);
+  useEffect(loadMessages, [shopId, token]);
 
   async function handleApprove() {
     setBusy(true);
@@ -35,6 +41,7 @@ export default function CustomerPortalPage() {
       });
       setActionMessage(res.message);
       load();
+      loadMessages();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to approve");
     } finally {
@@ -42,19 +49,17 @@ export default function CustomerPortalPage() {
     }
   }
 
-  async function handleComment(e: FormEvent) {
-    e.preventDefault();
-    if (!comment.trim()) return;
+  async function handleSendMessage() {
+    if (!messageBody.trim()) return;
     setBusy(true);
     setActionError(null);
     try {
-      const res = await apiFetch<{ message: string }>(`/portal/${shopId}/${token}/comment`, {
+      await apiFetch(`/portal/${shopId}/${token}/messages`, {
         method: "POST",
-        body: JSON.stringify({ comment }),
+        body: JSON.stringify({ body: messageBody }),
       });
-      setActionMessage(res.message);
-      setComment("");
-      load();
+      setMessageBody("");
+      loadMessages();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to send");
     } finally {
@@ -143,44 +148,66 @@ export default function CustomerPortalPage() {
           Payment: {order.paymentStatus}
         </p>
 
-        {actionMessage && (
-          <p className="cell-muted" style={{ marginTop: 20, fontSize: 14 }}>
-            {actionMessage}
-          </p>
-        )}
         {actionError && <p className="form-error">{actionError}</p>}
 
-        {order.status === "design_approval" && !actionMessage && (
+        {order.status === "design_approval" && (
           <div style={{ marginTop: 20 }}>
-            <button
-              type="button"
-              className="btn btn-primary btn-block"
-              onClick={handleApprove}
-              disabled={busy}
-            >
-              Approve design
-            </button>
-            <form onSubmit={handleComment} style={{ marginTop: 12 }}>
-              <label className="field">
-                Need changes? Tell us what to fix
-                <textarea
-                  className="item-description"
-                  rows={2}
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="e.g. Please make the logo bigger…"
-                />
-              </label>
-              <button
-                type="submit"
-                className="btn btn-outline btn-block"
-                disabled={busy || !comment.trim()}
-              >
-                Request changes
+            {actionMessage ? (
+              <p className="cell-muted" style={{ fontSize: 14 }}>
+                {actionMessage}
+              </p>
+            ) : (
+              <button type="button" className="btn btn-primary btn-block" onClick={handleApprove} disabled={busy}>
+                Approve design
               </button>
-            </form>
+            )}
           </div>
         )}
+
+        <div style={{ marginTop: 20 }}>
+          <p className="section-label">Messages</p>
+          {messages === null ? (
+            <p className="cell-muted" style={{ fontSize: 13 }}>
+              Loading…
+            </p>
+          ) : messages.length === 0 ? (
+            <p className="cell-muted" style={{ fontSize: 13 }}>
+              No messages yet. Send us a note any time about this order.
+            </p>
+          ) : (
+            <div className="message-thread">
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`message-bubble ${m.sender === "customer" ? "message-bubble-staff" : "message-bubble-customer"}`}
+                >
+                  {m.body}
+                  <span className="message-bubble-meta">
+                    {m.sender === "customer" ? "You" : "Shop"} · {new Date(m.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <input
+              style={{ flex: 1 }}
+              placeholder="Ask a question or leave a note…"
+              value={messageBody}
+              onChange={(e) => setMessageBody(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              disabled={busy}
+            />
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={handleSendMessage}
+              disabled={busy || !messageBody.trim()}
+            >
+              Send
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -46,18 +46,24 @@ router.get("/", requireRole("admin", "manager", "front_desk"), async (req, res) 
   );
 });
 
+// Falls back to a dummy connect flow whenever the platform hasn't
+// registered real Dropbox/Google app credentials yet — same "configured
+// vs dummy" split used for payment providers, so a shop admin can still
+// click Connect and try the whole flow end to end.
 router.post("/:provider/connect", requireRole("admin"), async (req, res) => {
   const provider = req.params.provider;
   if (!isStorageProvider(provider)) {
     return res.status(400).json({ error: `provider must be one of: ${STORAGE_OAUTH_PROVIDERS.join(", ")}` });
   }
-  if (!CONFIGURED[provider]) {
-    return res.status(400).json({ error: `${provider} isn't configured on the server yet.` });
-  }
 
   const state = signOAuthState({ shopId: req.auth!.shopId, userId: req.auth!.userId, provider });
+
+  if (!CONFIGURED[provider]) {
+    return res.json({ url: `${process.env.FRONTEND_URL}/storage/dummy-connect/${state}`, mode: "dummy" });
+  }
+
   const url = provider === "dropbox" ? buildDropboxAuthorizeUrl(state) : buildGoogleAuthorizeUrl(state);
-  res.json({ url });
+  res.json({ url, mode: provider });
 });
 
 router.post("/:provider/disconnect", requireRole("admin"), async (req, res) => {

@@ -22,9 +22,10 @@ router.get("/:token", async (req, res) => {
     shopName: shop.name,
     kind: session.kind,
     planTier: session.planTier,
+    quantity: session.quantity ?? 1,
     priceUsd:
       session.kind === "storage_addon"
-        ? STORAGE_ADDON_PRICE_USD
+        ? STORAGE_ADDON_PRICE_USD * (session.quantity ?? 1)
         : PLAN_PRICES_USD[session.planTier as keyof typeof PLAN_PRICES_USD],
     completed: Boolean(session.completedAt),
   });
@@ -45,7 +46,7 @@ router.post("/:token/complete", async (req, res) => {
     await session.save();
 
     if (session.kind === "storage_addon") {
-      shop.storageAddons = (shop.storageAddons ?? 0) + 1;
+      shop.storageAddons = (shop.storageAddons ?? 0) + (session.quantity ?? 1);
     } else if (session.planTier) {
       // "dummy_" prefix keeps these unmistakable from real Stripe IDs (which
       // are always "cus_"/"sub_") so nobody mistakes a test subscription for

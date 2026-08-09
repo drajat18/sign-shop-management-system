@@ -42,4 +42,5 @@ export const EVENTS = {
   ORDER_CREATED: "order:created",
   JOB_UPDATED: "job:updated",
   JOB_CREATED: "job:created",
+  ORDER_MESSAGE_CREATED: "order:message-created",
 } as const;

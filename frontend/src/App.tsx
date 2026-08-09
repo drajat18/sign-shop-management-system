@@ -12,6 +12,7 @@ import SettingsPage from "./pages/admin/SettingsPage.js";
 import FilesPage from "./pages/files/FilesPage.js";
 import ForgotPassword from "./pages/ForgotPassword.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
+import InventoryPage from "./pages/inventory/InventoryPage.js";
 import Login from "./pages/Login.js";
 import DummyChargePage from "./pages/payments/DummyChargePage.js";
 import DummyConnectPage from "./pages/payments/DummyConnectPage.js";
@@ -24,6 +25,7 @@ import CustomerPortalPage from "./pages/portal/CustomerPortalPage.js";
 import JobsPage from "./pages/production/JobsPage.js";
 import ScanJobPage from "./pages/production/ScanJobPage.js";
 import ResetPassword from "./pages/ResetPassword.js";
+import DummyStorageConnectPage from "./pages/storage/DummyStorageConnectPage.js";
 import type { Role } from "./types/index.js";
 
 function guarded(role: Role, allowed: Role[], element: ReactElement, landing: string) {
@@ -45,6 +47,7 @@ export default function App() {
       <Route path="/payments/dummy-connect/:token" element={<DummyConnectPage />} />
       <Route path="/payments/dummy-charge/:token" element={<DummyChargePage />} />
       <Route path="/payments/result" element={<PaymentResultPage />} />
+      <Route path="/storage/dummy-connect/:token" element={<DummyStorageConnectPage />} />
     </>
   );
 
@@ -97,6 +100,10 @@ export default function App() {
         <Route path="/orders" element={guarded(user.role, PAGE_ACCESS.orders, <OrdersPage />, landing)} />
         <Route path="/jobs" element={guarded(user.role, PAGE_ACCESS.jobs, <JobsPage />, landing)} />
         <Route path="/files" element={guarded(user.role, PAGE_ACCESS.files, <FilesPage />, landing)} />
+        <Route
+          path="/inventory"
+          element={guarded(user.role, PAGE_ACCESS.inventory, <InventoryPage />, landing)}
+        />
         <Route path="/employees" element={guarded(user.role, PAGE_ACCESS.employees, <EmployeesPage />, landing)} />
         <Route
           path="/reports"

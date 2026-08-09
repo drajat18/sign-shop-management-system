@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext.js";
 import { usePlan, usePlanRefetch } from "../../auth/PlanContext.js";
 import type {
   CheckoutLink,
+  NotificationsResponse,
   PaymentConnectionStatus,
   PaymentOAuthProvider,
   PlanTier,
@@ -24,10 +25,46 @@ const PAYMENT_PROVIDER_LABEL: Record<PaymentOAuthProvider, string> = {
   paypal: "PayPal",
 };
 
-const PLAN_OPTIONS: { value: PlanTier; label: string }[] = [
-  { value: "starter", label: "Starter — $59.99/mo, up to 3 employees, 5GB storage" },
-  { value: "growth", label: "Growth — $119.99/mo, up to 10 employees, 25GB storage" },
-  { value: "pro", label: "Pro — $199.99/mo, unlimited employees, 100GB storage" },
+const GB = 1024 ** 3;
+
+const TIER_ORDER: PlanTier[] = ["starter", "growth", "pro"];
+
+interface TierDetails {
+  label: string;
+  price: number;
+  employeeLimit: number | null;
+  storageGb: number;
+  features: { reports: boolean; customer_portal: boolean; qr_tickets: boolean };
+}
+
+const TIER_DETAILS: Record<PlanTier, TierDetails> = {
+  starter: {
+    label: "Starter",
+    price: 59.99,
+    employeeLimit: 3,
+    storageGb: 5,
+    features: { reports: false, customer_portal: false, qr_tickets: false },
+  },
+  growth: {
+    label: "Growth",
+    price: 119.99,
+    employeeLimit: 10,
+    storageGb: 25,
+    features: { reports: true, customer_portal: true, qr_tickets: true },
+  },
+  pro: {
+    label: "Pro",
+    price: 199.99,
+    employeeLimit: null,
+    storageGb: 100,
+    features: { reports: true, customer_portal: true, qr_tickets: true },
+  },
+};
+
+const FEATURE_ROWS: { key: keyof TierDetails["features"]; label: string }[] = [
+  { key: "reports", label: "Reports" },
+  { key: "customer_portal", label: "Customer portal" },
+  { key: "qr_tickets", label: "QR job tickets" },
 ];
 
 type StatusResponse = Record<StorageOAuthProvider, StorageConnectionStatus>;
@@ -131,6 +168,12 @@ export default function SettingsPage() {
     }
   }
 
+  const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
+
+  useEffect(() => {
+    apiFetch<NotificationsResponse>("/notifications", { token }).then(setNotifications).catch(console.error);
+  }, [token]);
+
   async function handleDisconnectPayment(provider: PaymentOAuthProvider) {
     setPaymentError(null);
     setBusyPaymentProvider(provider);
@@ -180,13 +223,14 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleBuyStorage() {
+  async function handleBuyStorage(quantity: number) {
     setBillingError(null);
     setBillingBusy("storage");
     try {
       const { url } = await apiFetch<CheckoutLink>("/settings/billing/storage-addon-link", {
         method: "POST",
         token,
+        body: JSON.stringify({ quantity }),
       });
       window.location.href = url;
     } catch (err) {
@@ -194,6 +238,21 @@ export default function SettingsPage() {
       setBillingBusy(null);
     }
   }
+
+  // Add-ons persist across a tier change (they're a separate purchase, not
+  // part of any one tier), so the limit a downgrade would leave you with is
+  // the target tier's base storage *plus* whatever add-ons are already
+  // owned — not just the target tier's base alone.
+  const isDowngrade = plan ? TIER_ORDER.indexOf(billingTier) < TIER_ORDER.indexOf(plan.planTier) : false;
+  const targetLimitBytesAfterChange = plan
+    ? TIER_DETAILS[billingTier].storageGb * GB + plan.storage.addonUnits * plan.storage.addonUnitGb * GB
+    : 0;
+  const storageOverageBytes = plan ? Math.max(0, plan.storage.usedBytes - targetLimitBytesAfterChange) : 0;
+  const neededAddonUnits =
+    plan && storageOverageBytes > 0 ? Math.ceil(storageOverageBytes / (plan.storage.addonUnitGb * GB)) : 0;
+  const targetEmployeeLimit = TIER_DETAILS[billingTier].employeeLimit;
+  const employeeOverage =
+    plan && targetEmployeeLimit !== null ? Math.max(0, plan.employeeCount - targetEmployeeLimit) : 0;
 
   return (
     <div>
@@ -258,24 +317,121 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <label className="field" style={{ flex: 1, minWidth: 260, marginBottom: 0 }}>
-                Change plan
-                <select value={billingTier} onChange={(e) => setBillingTier(e.target.value as PlanTier)}>
-                  {PLAN_OPTIONS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
+            <div style={{ overflowX: "auto" }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    {TIER_ORDER.map((tier) => (
+                      <th key={tier} style={{ textAlign: "center" }}>
+                        <label
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: 4,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="billingTier"
+                            checked={billingTier === tier}
+                            onChange={() => setBillingTier(tier)}
+                          />
+                          {TIER_DETAILS[tier].label}
+                          {plan.planTier === tier && (
+                            <span className="badge badge-order-completed">Current</span>
+                          )}
+                        </label>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="cell-muted">Price</td>
+                    {TIER_ORDER.map((tier) => (
+                      <td key={tier} style={{ textAlign: "center" }}>
+                        ${TIER_DETAILS[tier].price.toFixed(2)}/mo
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="cell-muted">Employees</td>
+                    {TIER_ORDER.map((tier) => (
+                      <td key={tier} style={{ textAlign: "center" }}>
+                        {TIER_DETAILS[tier].employeeLimit ?? "Unlimited"}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="cell-muted">Storage</td>
+                    {TIER_ORDER.map((tier) => (
+                      <td key={tier} style={{ textAlign: "center" }}>
+                        {TIER_DETAILS[tier].storageGb}GB
+                      </td>
+                    ))}
+                  </tr>
+                  {FEATURE_ROWS.map((row) => (
+                    <tr key={row.key}>
+                      <td className="cell-muted">{row.label}</td>
+                      {TIER_ORDER.map((tier) => (
+                        <td key={tier} style={{ textAlign: "center" }}>
+                          {TIER_DETAILS[tier].features[row.key] ? "✓" : "—"}
+                        </td>
+                      ))}
+                    </tr>
                   ))}
-                </select>
-              </label>
+                </tbody>
+              </table>
+            </div>
+
+            {billingTier !== plan.planTier && isDowngrade && (storageOverageBytes > 0 || employeeOverage > 0) && (
+              <div className="form-error" style={{ display: "grid", gap: 8 }}>
+                {storageOverageBytes > 0 && (
+                  <p>
+                    Downgrading to {TIER_DETAILS[billingTier].label} would put you over your storage
+                    limit — you're using {formatBytes(plan.storage.usedBytes)}, but this plan (plus your
+                    existing add-ons) only covers {formatBytes(targetLimitBytesAfterChange)}. New uploads
+                    would be blocked until you're back under the limit. Buy {neededAddonUnits} more +
+                    {plan.storage.addonUnitGb}GB add-on{neededAddonUnits > 1 ? "s" : ""} to cover the gap,
+                    or free up space first.
+                  </p>
+                )}
+                {employeeOverage > 0 && (
+                  <p>
+                    You have {plan.employeeCount} active employees — {TIER_DETAILS[billingTier].label}{" "}
+                    only includes {targetEmployeeLimit}. Nobody gets deactivated automatically, but you
+                    won't be able to add new employees until you're at or under the limit.
+                  </p>
+                )}
+                {storageOverageBytes > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ justifySelf: "start" }}
+                    onClick={() => handleBuyStorage(neededAddonUnits)}
+                    disabled={billingBusy !== null}
+                  >
+                    {billingBusy === "storage"
+                      ? "Redirecting…"
+                      : `Buy ${neededAddonUnits} × +${plan.storage.addonUnitGb}GB to cover this`}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div>
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
                 onClick={handleChangePlan}
                 disabled={billingBusy !== null || billingTier === plan.planTier}
               >
-                {billingBusy === "plan" ? "Redirecting…" : "Upgrade / downgrade"}
+                {billingBusy === "plan"
+                  ? "Redirecting…"
+                  : `Switch to ${TIER_DETAILS[billingTier].label}`}
               </button>
             </div>
 
@@ -283,16 +439,17 @@ export default function SettingsPage() {
               <div>
                 <p style={{ fontWeight: 600, marginBottom: 2 }}>Need more space?</p>
                 <p className="cell-muted" style={{ fontSize: 13 }}>
-                  Buy +25GB of storage for $9.99/mo, stackable, available on every plan.
+                  Buy +{plan.storage.addonUnitGb}GB of storage for $9.99/mo, stackable, available on
+                  every plan.
                 </p>
               </div>
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={handleBuyStorage}
+                onClick={() => handleBuyStorage(1)}
                 disabled={billingBusy !== null}
               >
-                {billingBusy === "storage" ? "Redirecting…" : "Buy +25GB"}
+                {billingBusy === "storage" ? "Redirecting…" : `Buy +${plan.storage.addonUnitGb}GB`}
               </button>
             </div>
           </div>
@@ -344,20 +501,21 @@ export default function SettingsPage() {
                       <span
                         className={`badge ${s.connected ? "badge-order-completed" : "badge-order-new"}`}
                       >
-                        {!s.configured ? "Not configured" : s.connected ? "Connected" : "Not connected"}
+                        {s.connected ? "Connected" : "Not connected"}
                       </span>
                       {s.connected && s.accountLabel && (
                         <span className="cell-muted" style={{ fontSize: 13 }}>
                           {s.accountLabel}
                         </span>
                       )}
+                      {!s.configured && (
+                        <span className="cell-muted" style={{ fontSize: 13 }}>
+                          — test mode, real {label} not set up yet
+                        </span>
+                      )}
                     </div>
                   </div>
-                  {!s.configured ? (
-                    <span className="cell-muted" style={{ fontSize: 13 }}>
-                      Not set up by the platform yet
-                    </span>
-                  ) : s.connected ? (
+                  {s.connected ? (
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
@@ -465,6 +623,56 @@ export default function SettingsPage() {
               );
             })}
           </div>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 24, marginTop: 24 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Notifications</h2>
+        <p className="cell-muted" style={{ marginBottom: 16 }}>
+          Password resets, order updates, and messages send automatically. This is a log of what's gone
+          out — useful to confirm the feature is working before real email/SMS credentials are set up.
+        </p>
+
+        {notifications === null ? (
+          <p className="cell-muted">Loading…</p>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              <span className={`badge ${notifications.emailConfigured ? "badge-order-completed" : "badge-order-new"}`}>
+                Email {notifications.emailConfigured ? "configured" : "test mode"}
+              </span>
+              <span className={`badge ${notifications.smsConfigured ? "badge-order-completed" : "badge-order-new"}`}>
+                SMS {notifications.smsConfigured ? "configured" : "test mode"}
+              </span>
+            </div>
+
+            {notifications.logs.length === 0 ? (
+              <p className="cell-muted" style={{ fontSize: 13 }}>
+                Nothing sent yet.
+              </p>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Channel</th>
+                    <th>To</th>
+                    <th>Trigger</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {notifications.logs.map((log) => (
+                    <tr key={log.id}>
+                      <td className="cell-muted">{log.channel === "email" ? "Email" : "SMS"}</td>
+                      <td className="cell-primary">{log.to}</td>
+                      <td className="cell-muted">{log.trigger.replace(/_/g, " ")}</td>
+                      <td className="cell-muted">{new Date(log.createdAt).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
       </div>
     </div>

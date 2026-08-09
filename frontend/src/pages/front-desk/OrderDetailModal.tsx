@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client.js";
 import { downloadArtwork, uploadArtwork } from "../../api/files.js";
 import { estimateMaterialCost } from "../../api/materialCost.js";
+import { listOrderMessages, sendOrderMessage } from "../../api/orderMessages.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { usePlan } from "../../auth/PlanContext.js";
 import CameraCaptureModal from "../../components/CameraCaptureModal.js";
@@ -10,6 +11,7 @@ import type {
   NewOrderItemInput,
   OrderDetail,
   OrderItem,
+  OrderMessage,
   OrderStatus,
   PaymentConnectionStatus,
   PaymentOAuthProvider,
@@ -72,6 +74,9 @@ export default function OrderDetailModal({
   const [chargeAmount, setChargeAmount] = useState<number | null>(null);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [messages, setMessages] = useState<OrderMessage[] | null>(null);
+  const [messageBody, setMessageBody] = useState("");
+  const [messageBusy, setMessageBusy] = useState(false);
 
   function loadOrder() {
     apiFetch<OrderDetail>(`/orders/${orderId}`, { token })
@@ -80,6 +85,35 @@ export default function OrderDetailModal({
   }
 
   useEffect(loadOrder, [orderId, token]);
+
+  // Loading the thread is what "reading" it means server-side (see
+  // GET /orders/:id/messages) — clearing the local flag here too means the
+  // "new message" banner disappears the moment it's actually been seen,
+  // without a separate dismiss click that used to erase the message itself.
+  useEffect(() => {
+    listOrderMessages(orderId, token)
+      .then((list) => {
+        setMessages(list);
+        setOrder((prev) => (prev ? { ...prev, customerResponseType: undefined } : prev));
+      })
+      .catch(console.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, token]);
+
+  async function handleSendMessage() {
+    if (!messageBody.trim()) return;
+    setMessageBusy(true);
+    setError(null);
+    try {
+      const message = await sendOrderMessage(orderId, messageBody.trim(), token);
+      setMessages((prev) => (prev ? [...prev, message] : [message]));
+      setMessageBody("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      setMessageBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (order && chargeAmount === null) setChargeAmount(order.total);
@@ -254,45 +288,64 @@ export default function OrderDetailModal({
               </div>
             </div>
 
-            {order.customerResponseType && (
-              <div
-                className="form-error"
-                style={{
-                  background:
-                    order.customerResponseType === "approved"
-                      ? "var(--color-success-soft)"
-                      : "var(--color-warning-soft)",
-                  color:
-                    order.customerResponseType === "approved"
-                      ? "var(--color-success)"
-                      : "var(--color-warning)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: 12,
-                }}
-              >
-                <span>
-                  {order.customerResponseType === "approved" ? (
-                    <strong>Customer approved the design.</strong>
-                  ) : (
-                    <>
-                      <strong>Customer requested changes:</strong> {order.customerComment}
-                    </>
-                  )}
-                </span>
-                {editable && (
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    style={{ flexShrink: 0 }}
-                    onClick={() => patchOrder({ customerComment: "", customerResponseType: "" })}
+            <div className="item-card" style={{ marginBottom: 16 }}>
+              <div className="item-card-header">
+                <span className="item-card-title">Messages</span>
+                {order.customerResponseType && (
+                  <span
+                    className={`badge ${order.customerResponseType === "approved" ? "badge-order-completed" : "badge-order-new"}`}
                   >
-                    Dismiss
-                  </button>
+                    {order.customerResponseType === "approved" ? "Customer approved" : "New"}
+                  </span>
                 )}
               </div>
-            )}
+
+              {messages === null ? (
+                <p className="cell-muted" style={{ fontSize: 13 }}>
+                  Loading…
+                </p>
+              ) : messages.length === 0 ? (
+                <p className="cell-muted" style={{ fontSize: 13 }}>
+                  No messages yet. Anything you send here reaches the customer on their order link.
+                </p>
+              ) : (
+                <div className="message-thread">
+                  {messages.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`message-bubble ${m.sender === "staff" ? "message-bubble-staff" : "message-bubble-customer"}`}
+                    >
+                      {m.body}
+                      <span className="message-bubble-meta">
+                        {m.sender === "staff" ? m.staffUser?.name ?? "Staff" : order.customer?.name ?? "Customer"} ·{" "}
+                        {new Date(m.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {editable && (
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <input
+                    style={{ flex: 1 }}
+                    placeholder="Reply to the customer…"
+                    value={messageBody}
+                    onChange={(e) => setMessageBody(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                    disabled={messageBusy}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSendMessage}
+                    disabled={messageBusy || !messageBody.trim()}
+                  >
+                    {messageBusy ? "Sending…" : "Send"}
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
               <label className="field">

@@ -1,9 +1,12 @@
 import crypto from "node:crypto";
 import { Router } from "express";
+import type { Document } from "mongoose";
 import { requireAuth } from "../middleware/auth.js";
 import { requirePlanFeature } from "../middleware/requirePlanFeature.js";
 import { requireRole } from "../middleware/requireRole.js";
+import type { Customer } from "../models/Customer.js";
 import { getStripe } from "../services/billing/stripe.js";
+import { notifyCustomer } from "../services/notifications.js";
 import { recomputeOrderTotal } from "../services/orderTotals.js";
 import { createPaypalOrder } from "../services/payments/paypalPayments.js";
 import { createSquarePaymentLink, withSquareAutoRefresh } from "../services/payments/squarePayments.js";
@@ -13,6 +16,8 @@ import { EVENTS, emitToShop } from "../sockets/index.js";
 function paymentReturnBaseUrl(): string {
   return `${paymentBackendUrl()}/api/payment-return`;
 }
+
+type CustomerDoc = Document & Customer;
 
 const PORTAL_LINK_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
@@ -31,20 +36,109 @@ const router = Router();
 
 router.use(requireAuth);
 
+const SORTABLE_FIELDS = ["createdAt", "dueDate", "total", "status", "paymentStatus"] as const;
+
 // Front desk/manager/admin create and edit orders; production can view
 // (they need the customer/due-date context behind each job they're assigned).
+// Search/filter/sort/paginate all happen server-side rather than shipping
+// every order to the client — the only one that needs a pre-pass is
+// `search`, since matching by customer name means resolving customer ids
+// before the Order query can filter on them (Mongo can't filter a find()
+// by a populated ref's own fields directly).
 router.get("/", requireRole("admin", "manager", "front_desk", "production"), async (req, res) => {
-  const { Order, OrderItem } = req.models!;
-  const orders = await Order.find().populate("customer").sort({ createdAt: -1 });
-  const counts = await OrderItem.aggregate([{ $group: { _id: "$order", count: { $sum: 1 } } }]);
-  const countByOrder = new Map(counts.map((c) => [c._id.toString(), c.count]));
+  const { Order, OrderItem, OrderMessage, Customer } = req.models!;
+  const {
+    search,
+    status,
+    paymentStatus,
+    sortBy = "createdAt",
+    sortDir = "desc",
+    page = "1",
+    limit = "25",
+  } = req.query as Record<string, string | undefined>;
 
-  res.json(
-    orders.map((order) => ({
+  const filter: Record<string, unknown> = {};
+  if (status) filter.status = status;
+  if (paymentStatus) filter.paymentStatus = paymentStatus;
+  if (search?.trim()) {
+    const matchingCustomers = await Customer.find({
+      name: { $regex: search.trim(), $options: "i" },
+    }).select("_id");
+    filter.customer = { $in: matchingCustomers.map((c) => c._id) };
+  }
+
+  const sortField = (SORTABLE_FIELDS as readonly string[]).includes(sortBy ?? "") ? sortBy! : "createdAt";
+  const sortOrder = sortDir === "asc" ? 1 : -1;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit ?? "25", 10) || 25));
+
+  const [orders, total] = await Promise.all([
+    Order.find(filter)
+      .populate("customer")
+      .sort({ [sortField]: sortOrder })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum),
+    Order.countDocuments(filter),
+  ]);
+
+  const orderIds = orders.map((o) => o._id);
+  const counts = await OrderItem.aggregate([
+    { $match: { order: { $in: orderIds } } },
+    { $group: { _id: "$order", count: { $sum: 1 } } },
+  ]);
+  const countByOrder = new Map(counts.map((c) => [c._id.toString(), c.count]));
+  const unread = await OrderMessage.aggregate([
+    { $match: { order: { $in: orderIds }, sender: "customer", readByStaff: false } },
+    { $group: { _id: "$order", count: { $sum: 1 } } },
+  ]);
+  const unreadByOrder = new Map(unread.map((c) => [c._id.toString(), c.count]));
+
+  res.json({
+    orders: orders.map((order) => ({
       ...order.toJSON(),
       itemsCount: countByOrder.get(order.id) ?? 0,
-    }))
-  );
+      unreadMessageCount: unreadByOrder.get(order.id) ?? 0,
+    })),
+    total,
+    page: pageNum,
+    limit: limitNum,
+  });
+});
+
+// CSV export of every order matching the current filters (no pagination
+// limit, unlike the list endpoint) — registered ahead of GET /:id so
+// "export" is never swallowed as an :id value.
+router.get("/export", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, Customer } = req.models!;
+  const { search, status, paymentStatus } = req.query as Record<string, string | undefined>;
+
+  const filter: Record<string, unknown> = {};
+  if (status) filter.status = status;
+  if (paymentStatus) filter.paymentStatus = paymentStatus;
+  if (search?.trim()) {
+    const matchingCustomers = await Customer.find({
+      name: { $regex: search.trim(), $options: "i" },
+    }).select("_id");
+    filter.customer = { $in: matchingCustomers.map((c) => c._id) };
+  }
+
+  const orders = await Order.find(filter).populate("customer").sort({ createdAt: -1 });
+
+  const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const header = ["Customer", "Due Date", "Status", "Payment Status", "Total", "Created At"];
+  const rows = orders.map((order) => [
+    (order.customer as unknown as { name?: string } | null)?.name ?? "",
+    order.dueDate ? new Date(order.dueDate).toLocaleDateString() : "",
+    order.status,
+    order.paymentStatus,
+    order.total.toFixed(2),
+    new Date(order.get("createdAt")).toLocaleDateString(),
+  ]);
+  const csv = [header, ...rows].map((row) => row.map((cell) => escape(String(cell))).join(",")).join("\n");
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", 'attachment; filename="orders.csv"');
+  res.send(csv);
 });
 
 // Full detail: everything needed to view or edit an order, including each
@@ -167,27 +261,82 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
   res.status(201).json({ item, job });
 });
 
+// Registered ahead of PATCH /:id so "bulk" is never swallowed as an :id
+// value — Express matches routes in registration order.
+router.patch("/bulk", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, StatusLog } = req.models!;
+  const { orderIds, status, paymentStatus } = req.body as {
+    orderIds?: string[];
+    status?: string;
+    paymentStatus?: string;
+  };
+  if (!orderIds?.length) {
+    return res.status(400).json({ error: "orderIds is required" });
+  }
+  if (!status && !paymentStatus) {
+    return res.status(400).json({ error: "status or paymentStatus is required" });
+  }
+
+  let updated = 0;
+  for (const orderId of orderIds) {
+    const existing = await Order.findById(orderId);
+    if (!existing) continue;
+
+    const previousStatus = existing.status;
+    if (status) existing.status = status as (typeof existing)["status"];
+    if (paymentStatus) existing.paymentStatus = paymentStatus as (typeof existing)["paymentStatus"];
+    await existing.save();
+    updated += 1;
+
+    if (status && status !== previousStatus) {
+      await StatusLog.create({
+        entityType: "order",
+        entityId: existing._id,
+        changedBy: req.auth!.userId,
+        fromStatus: previousStatus,
+        toStatus: existing.status,
+      });
+    }
+
+    await existing.populate("customer");
+    emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, existing);
+
+    if (status && status !== previousStatus) {
+      const label = status.replace("_", " ");
+      await notifyCustomer(
+        req.models!,
+        req.auth!.shopId,
+        existing,
+        existing.customer as unknown as CustomerDoc,
+        {
+          subject: `Your order is now: ${label}`,
+          text: `Hi! Just a quick update — your order's status changed to "${label}".`,
+          trigger: "order_status_changed",
+        }
+      );
+    }
+  }
+
+  res.json({ updated });
+});
+
 router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Order, StatusLog } = req.models!;
   const existing = await Order.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: "Order not found" });
 
-  const { status, dueDate, paymentStatus, description, customerComment, customerResponseType } = req.body as {
+  const { status, dueDate, paymentStatus, description } = req.body as {
     status?: string;
     dueDate?: string;
     paymentStatus?: string;
     description?: string;
-    customerComment?: string;
-    customerResponseType?: string;
   };
 
   const previousStatus = existing.status;
   Object.assign(
     existing,
     Object.fromEntries(
-      Object.entries({ status, dueDate, paymentStatus, description, customerComment, customerResponseType }).filter(
-        ([, v]) => v !== undefined
-      )
+      Object.entries({ status, dueDate, paymentStatus, description }).filter(([, v]) => v !== undefined)
     )
   );
   await existing.save();
@@ -210,7 +359,75 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   // pick up edits like a staff member dismissing that badge.
   emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, existing);
 
+  if (status && status !== previousStatus) {
+    const label = status.replace("_", " ");
+    await notifyCustomer(
+      req.models!,
+      req.auth!.shopId,
+      existing,
+      existing.customer as unknown as CustomerDoc,
+      {
+        subject: `Your order is now: ${label}`,
+        text: `Hi! Just a quick update — your order's status changed to "${label}".`,
+        trigger: "order_status_changed",
+      }
+    );
+  }
+
   res.json(existing);
+});
+
+// Loading the thread is what "reading" it means — clears the unread flag
+// on every pending customer message plus the Order's own attention flag,
+// exactly once, instead of needing a separate "dismiss" action that used
+// to erase the message itself along with it.
+router.get("/:id/messages", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, OrderMessage } = req.models!;
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  const messages = await OrderMessage.find({ order: order._id })
+    .sort({ createdAt: 1 })
+    .populate("staffUser", "name");
+
+  await OrderMessage.updateMany(
+    { order: order._id, sender: "customer", readByStaff: false },
+    { readByStaff: true }
+  );
+  if (order.customerResponseType) {
+    order.customerResponseType = undefined;
+    await order.save();
+  }
+
+  res.json(messages);
+});
+
+router.post("/:id/messages", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, OrderMessage } = req.models!;
+  const order = await Order.findById(req.params.id).populate("customer");
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  const { body } = req.body as { body?: string };
+  if (!body?.trim()) return res.status(400).json({ error: "A message is required" });
+
+  const message = await OrderMessage.create({
+    order: order._id,
+    sender: "staff",
+    staffUser: req.auth!.userId,
+    body: body.trim(),
+    readByStaff: true,
+  });
+  await message.populate("staffUser", "name");
+
+  emitToShop(req.auth!.shopId, EVENTS.ORDER_MESSAGE_CREATED, { orderId: order.id, message });
+
+  await notifyCustomer(req.models!, req.auth!.shopId, order, order.customer as unknown as CustomerDoc, {
+    subject: "New message about your order",
+    text: body.trim(),
+    trigger: "staff_message",
+  });
+
+  res.status(201).json(message);
 });
 
 // Returns a shareable customer-portal link for this order, creating one if

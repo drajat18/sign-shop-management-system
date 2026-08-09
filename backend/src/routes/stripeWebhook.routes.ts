@@ -35,16 +35,19 @@ async function syncShopFromSubscription(subscription: Stripe.Subscription) {
 
 // Storage add-ons are separate recurring subscriptions from the plan-tier
 // one, purchased any number of times — each active subscription is worth
-// one +25GB unit. Tracked by ID (rather than just a counter) so a single
-// cancelled add-on decrements precisely instead of the whole count.
+// its line item's quantity in +25GB units (a single checkout can buy
+// several at once, e.g. covering a downgrade's storage gap in one click).
+// Tracked by ID (rather than just a counter) so a single cancelled
+// subscription decrements precisely instead of the whole count.
 async function activateStorageAddon(subscription: Stripe.Subscription) {
   const shopId = subscription.metadata?.shopId;
   const shop = shopId ? await Shop.findById(shopId) : null;
   if (!shop) return;
 
   if (!shop.storageAddonSubscriptionIds?.includes(subscription.id)) {
+    const quantity = subscription.items.data[0]?.quantity ?? 1;
     shop.storageAddonSubscriptionIds = [...(shop.storageAddonSubscriptionIds ?? []), subscription.id];
-    shop.storageAddons = (shop.storageAddons ?? 0) + 1;
+    shop.storageAddons = (shop.storageAddons ?? 0) + quantity;
     await shop.save();
   }
 }
@@ -54,8 +57,9 @@ async function deactivateStorageAddon(subscription: Stripe.Subscription) {
   const shop = shopId ? await Shop.findById(shopId) : null;
   if (!shop || !shop.storageAddonSubscriptionIds?.includes(subscription.id)) return;
 
+  const quantity = subscription.items.data[0]?.quantity ?? 1;
   shop.storageAddonSubscriptionIds = shop.storageAddonSubscriptionIds.filter((id) => id !== subscription.id);
-  shop.storageAddons = Math.max(0, (shop.storageAddons ?? 0) - 1);
+  shop.storageAddons = Math.max(0, (shop.storageAddons ?? 0) - quantity);
   await shop.save();
 }
 

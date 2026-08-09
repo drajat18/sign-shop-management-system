@@ -3,6 +3,7 @@ import { resolvePortalShop } from "../middleware/portalContext.js";
 import type { ShopModels } from "../models/shopModels.js";
 import { getProvider, type StorageProvider } from "../services/fileStorage/index.js";
 import { resolveUploadPath } from "../services/fileStorage/internalProvider.js";
+import { notifyShopAdmins } from "../services/notifications.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
 
 // Entirely public — no login, no employee account. The token itself (a
@@ -38,9 +39,20 @@ router.get("/:token", async (req, res) => {
     description: order.description,
     total: order.total,
     paymentStatus: order.paymentStatus,
-    customerComment: order.customerComment,
     items: items.map((item) => item.toJSON()),
   });
+});
+
+// The conversation thread — available at any order status, not just while
+// waiting on design approval, since customers may want to ask about
+// pickup times, payment, etc. regardless of where the order is.
+router.get("/:token/messages", async (req, res) => {
+  const models = req.portalModels!;
+  const order = await findOrderByToken(models, req.params.token);
+  if (!order) return res.status(404).json({ error: "This link is invalid or has expired." });
+
+  const messages = await models.OrderMessage.find({ order: order._id }).sort({ createdAt: 1 });
+  res.json(messages.map((m) => ({ id: m.id, sender: m.sender, body: m.body, createdAt: m.createdAt })));
 });
 
 // Viewing the design is the whole point of a "design approval" step, so
@@ -79,43 +91,72 @@ router.post("/:token/approve", async (req, res) => {
   }
 
   order.status = "in_production";
-  order.customerComment = undefined;
   order.customerResponseType = "approved";
   await order.save();
+
+  const shopId = (req.params as unknown as { shopId: string }).shopId;
+  const message = await models.OrderMessage.create({
+    order: order._id,
+    sender: "customer",
+    body: "Design approved.",
+    readByStaff: false,
+  });
+  emitToShop(shopId, EVENTS.ORDER_MESSAGE_CREATED, { orderId: order.id, message });
 
   await models.AuditLog.create({
     action: "customer_approved_design",
     targetId: order._id,
   });
   await order.populate("customer");
-  emitToShop((req.params as unknown as { shopId: string }).shopId, EVENTS.ORDER_UPDATED, order);
+  emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
+
+  const customerName = (order.customer as unknown as { name?: string } | null)?.name ?? "A customer";
+  await notifyShopAdmins(models, order._id, {
+    subject: "Design approved",
+    text: `${customerName} approved their design — the order is moving to production.`,
+    trigger: "customer_approved",
+  });
 
   res.json({ message: "Design approved — thank you! We'll get started on production." });
 });
 
-router.post("/:token/comment", async (req, res) => {
-  const { comment } = req.body as { comment?: string };
-  if (!comment?.trim()) {
-    return res.status(400).json({ error: "comment is required" });
+router.post("/:token/messages", async (req, res) => {
+  const { body } = req.body as { body?: string };
+  if (!body?.trim()) {
+    return res.status(400).json({ error: "A message is required" });
   }
 
   const models = req.portalModels!;
   const order = await findOrderByToken(models, req.params.token);
   if (!order) return res.status(404).json({ error: "This link is invalid or has expired." });
 
-  order.customerComment = comment.trim();
-  order.customerResponseType = "changes_requested";
+  const message = await models.OrderMessage.create({
+    order: order._id,
+    sender: "customer",
+    body: body.trim(),
+    readByStaff: false,
+  });
+  order.customerResponseType = "message";
   await order.save();
 
+  const shopId = (req.params as unknown as { shopId: string }).shopId;
   await models.AuditLog.create({
-    action: "customer_comment",
+    action: "customer_message",
     targetId: order._id,
-    metadata: { comment: comment.trim() },
+    metadata: { body: body.trim() },
   });
   await order.populate("customer");
-  emitToShop((req.params as unknown as { shopId: string }).shopId, EVENTS.ORDER_UPDATED, order);
+  emitToShop(shopId, EVENTS.ORDER_MESSAGE_CREATED, { orderId: order.id, message });
+  emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
 
-  res.json({ message: "Thanks — we've received your note and will follow up." });
+  const customerName = (order.customer as unknown as { name?: string } | null)?.name ?? "A customer";
+  await notifyShopAdmins(models, order._id, {
+    subject: `New message from ${customerName}`,
+    text: body.trim(),
+    trigger: "customer_message",
+  });
+
+  res.json({ message: "Thanks — we've received your message and will follow up." });
 });
 
 export default router;

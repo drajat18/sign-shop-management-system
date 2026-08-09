@@ -92,10 +92,15 @@ router.post("/forgot-password", async (req, res) => {
   });
 
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password?email=${encodeURIComponent(normalizedEmail)}&token=${rawToken}`;
-  await sendEmail({
+  const subject = "Reset your Sign Shop password";
+  const text = `Click the link below to reset your password. This link expires in 1 hour.\n\n${resetUrl}`;
+  await sendEmail({ to: normalizedEmail, subject, text });
+  await models.NotificationLog.create({
+    channel: "email",
     to: normalizedEmail,
-    subject: "Reset your Sign Shop password",
-    text: `Click the link below to reset your password. This link expires in 1 hour.\n\n${resetUrl}`,
+    subject,
+    body: text,
+    trigger: "password_reset",
   });
 
   res.json(genericResponse);

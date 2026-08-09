@@ -3,7 +3,18 @@ import { Dropbox, DropboxAuth } from "dropbox";
 import { getShopModels } from "../../models/shopModels.js";
 import { getShopConnection } from "../shopConnection.js";
 import { refreshDropboxAccessToken } from "../storageOAuth/dropboxOAuth.js";
+import { internalProvider } from "./internalProvider.js";
 import type { FileStorageProvider } from "./index.js";
+
+// A "Connect Dropbox (test)" from Settings creates a connection with an
+// access token that starts this way — no real Dropbox account backs it, so
+// uploads quietly go to internal storage instead of hitting the real API
+// with a token that would just 401.
+async function isDummyConnection(shopId: string): Promise<boolean> {
+  const { StorageConnection } = getShopModels(getShopConnection(shopId));
+  const connection = await StorageConnection.findOne({ provider: "dropbox" });
+  return Boolean(connection?.accessToken.startsWith("dummy_token_"));
+}
 
 async function client(shopId: string): Promise<{ dbx: Dropbox; onRefreshed: (token: string) => Promise<void> }> {
   const { StorageConnection } = getShopModels(getShopConnection(shopId));
@@ -52,6 +63,9 @@ async function withAutoRefresh<T>(shopId: string, fn: (dbx: Dropbox) => Promise<
 
 export const dropboxProvider: FileStorageProvider = {
   async upload(fileName, data, shopId) {
+    if (await isDummyConnection(shopId)) {
+      return internalProvider.upload(fileName, data, shopId);
+    }
     const path = `/${crypto.randomUUID()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     await withAutoRefresh(shopId, (dbx) =>
       dbx.filesUpload({ path, contents: data, mode: { ".tag": "add" } })

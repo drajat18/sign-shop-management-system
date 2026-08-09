@@ -79,7 +79,7 @@ export default function DummyCheckoutPage() {
         <h1 className="auth-title">{session.shopName}</h1>
         <p className="auth-subtitle">
           {session.kind === "storage_addon"
-            ? "+25GB storage add-on"
+            ? `${session.quantity > 1 ? `${session.quantity} × ` : ""}+25GB storage add-on${session.quantity > 1 ? "s" : ""}`
             : `${(session.planTier ?? "").charAt(0).toUpperCase()}${(session.planTier ?? "").slice(1)} plan`}
           {" — $"}
           {session.priceUsd.toFixed(2)}/month
@@ -89,7 +89,7 @@ export default function DummyCheckoutPage() {
           <>
             <p className="cell-muted" style={{ marginTop: 20, fontSize: 14 }}>
               {session.kind === "storage_addon"
-                ? "Test storage add-on activated. This shop's storage limit has been increased — no card was charged."
+                ? `Test storage add-on${session.quantity > 1 ? "s" : ""} activated. This shop's storage limit has been increased by ${session.quantity * 25}GB — no card was charged.`
                 : "Test subscription activated. This shop's plan and status have been updated — no card was charged."}
             </p>
             <Link to="/admin?billing=success" className="btn btn-outline btn-block" style={{ marginTop: 12 }}>

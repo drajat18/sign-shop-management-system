@@ -3,7 +3,17 @@ import { google, type drive_v3 } from "googleapis";
 import { getShopModels } from "../../models/shopModels.js";
 import { getShopConnection } from "../shopConnection.js";
 import { googleOAuthClient } from "../storageOAuth/googleOAuth.js";
+import { internalProvider } from "./internalProvider.js";
 import type { FileStorageProvider } from "./index.js";
+
+// Same dummy-detection as dropboxProvider.ts — a "Connect Google Drive
+// (test)" connection has no real account behind it, so uploads go to
+// internal storage instead of calling the real Drive API.
+async function isDummyConnection(shopId: string): Promise<boolean> {
+  const { StorageConnection } = getShopModels(getShopConnection(shopId));
+  const connection = await StorageConnection.findOne({ provider: "google_drive" });
+  return Boolean(connection?.accessToken.startsWith("dummy_token_"));
+}
 
 async function driveClient(shopId: string): Promise<drive_v3.Drive> {
   const { StorageConnection } = getShopModels(getShopConnection(shopId));
@@ -29,6 +39,9 @@ async function driveClient(shopId: string): Promise<drive_v3.Drive> {
 
 export const googleDriveProvider: FileStorageProvider = {
   async upload(fileName, data, shopId) {
+    if (await isDummyConnection(shopId)) {
+      return internalProvider.upload(fileName, data, shopId);
+    }
     const drive = await driveClient(shopId);
     const res = await drive.files.create({
       requestBody: { name: fileName },

@@ -5,6 +5,9 @@ import { customerPortalTokenSchema, type CustomerPortalToken } from "./CustomerP
 import { fileRecordSchema, type FileRecord } from "./FileRecord.js";
 import { orderSchema, type Order } from "./Order.js";
 import { orderItemSchema, type OrderItem } from "./OrderItem.js";
+import { orderMessageSchema, type OrderMessage } from "./OrderMessage.js";
+import { notificationLogSchema, type NotificationLog } from "./NotificationLog.js";
+import { materialStockSchema, type MaterialStock } from "./MaterialStock.js";
 import { passwordResetTokenSchema, type PasswordResetToken } from "./PasswordResetToken.js";
 import { paymentConnectionSchema, type PaymentConnection } from "./PaymentConnection.js";
 import { productionJobSchema, type ProductionJob } from "./ProductionJob.js";
@@ -17,6 +20,7 @@ export interface ShopModels {
   Customer: Model<Customer>;
   Order: Model<Order>;
   OrderItem: Model<OrderItem>;
+  OrderMessage: Model<OrderMessage>;
   ProductionJob: Model<ProductionJob>;
   StatusLog: Model<StatusLog>;
   FileRecord: Model<FileRecord>;
@@ -25,6 +29,8 @@ export interface ShopModels {
   CustomerPortalToken: Model<CustomerPortalToken>;
   StorageConnection: Model<StorageConnection>;
   PaymentConnection: Model<PaymentConnection>;
+  NotificationLog: Model<NotificationLog>;
+  MaterialStock: Model<MaterialStock>;
 }
 
 const registry = new WeakMap<Connection, ShopModels>();
@@ -41,6 +47,7 @@ export function getShopModels(connection: Connection): ShopModels {
     Customer: connection.model<Customer>("Customer", customerSchema),
     Order: connection.model<Order>("Order", orderSchema),
     OrderItem: connection.model<OrderItem>("OrderItem", orderItemSchema),
+    OrderMessage: connection.model<OrderMessage>("OrderMessage", orderMessageSchema),
     ProductionJob: connection.model<ProductionJob>("ProductionJob", productionJobSchema),
     StatusLog: connection.model<StatusLog>("StatusLog", statusLogSchema),
     FileRecord: connection.model<FileRecord>("FileRecord", fileRecordSchema),
@@ -61,6 +68,8 @@ export function getShopModels(connection: Connection): ShopModels {
       "PaymentConnection",
       paymentConnectionSchema
     ),
+    NotificationLog: connection.model<NotificationLog>("NotificationLog", notificationLogSchema),
+    MaterialStock: connection.model<MaterialStock>("MaterialStock", materialStockSchema),
   };
   registry.set(connection, models);
   return models;

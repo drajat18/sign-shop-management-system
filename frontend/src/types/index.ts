@@ -39,8 +39,16 @@ export interface Order {
   total: number;
   paymentStatus: "unpaid" | "partial" | "paid";
   itemsCount: number;
-  customerComment?: string;
-  customerResponseType?: "approved" | "changes_requested";
+  unreadMessageCount?: number;
+  customerResponseType?: "approved" | "message";
+}
+
+export interface OrderMessage {
+  id: string;
+  sender: "staff" | "customer";
+  staffUser?: { id: string; name: string } | null;
+  body: string;
+  createdAt: string;
 }
 
 export type StorageProvider = "internal" | "dropbox" | "google_drive";
@@ -58,6 +66,11 @@ export interface StorageConnectionStatus {
   connected: boolean;
   accountLabel?: string;
   connectedAt?: string;
+}
+
+export interface DummyStorageConnectInfo {
+  shopName: string;
+  provider: StorageOAuthProvider;
 }
 
 export type PaymentOAuthProvider = "stripe" | "square" | "paypal";
@@ -190,6 +203,33 @@ export interface FileGalleryResponse {
   usage: { usedBytes: number; limitBytes: number };
 }
 
+export interface NotificationLogEntry {
+  id: string;
+  channel: "email" | "sms";
+  to: string;
+  subject?: string;
+  body: string;
+  trigger: string;
+  createdAt: string;
+}
+
+export interface NotificationsResponse {
+  emailConfigured: boolean;
+  smsConfigured: boolean;
+  logs: NotificationLogEntry[];
+}
+
+export interface MaterialStock {
+  id: string;
+  materialName: string;
+  unit: string;
+  quantityOnHand: number;
+  reorderThreshold: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Shop {
   id: string;
   name: string;
@@ -219,7 +259,6 @@ export interface PortalOrder {
   description?: string;
   total: number;
   paymentStatus: string;
-  customerComment?: string;
   items: PortalOrderItem[];
 }
 
@@ -227,6 +266,7 @@ export interface DummyCheckoutSession {
   shopName: string;
   kind: "plan" | "storage_addon";
   planTier?: PlanTier;
+  quantity: number;
   priceUsd: number;
   completed: boolean;
 }
@@ -255,7 +295,7 @@ export interface ProductionJob {
       id: string;
       dueDate?: string;
       customer: Customer;
-      customerResponseType?: "approved" | "changes_requested";
+      customerResponseType?: "approved" | "message";
     };
   };
 }

@@ -14,6 +14,9 @@ const dummyCheckoutSessionSchema = new Schema(
     shop: { type: Schema.Types.ObjectId, required: true, ref: "Shop" },
     kind: { type: String, enum: DUMMY_CHECKOUT_KINDS, default: "plan" },
     planTier: { type: String, enum: PLAN_TIERS },
+    // Only meaningful for kind: "storage_addon" — how many +25GB units this
+    // one checkout grants on completion. Always 1 for kind: "plan".
+    quantity: { type: Number, default: 1 },
     token: { type: String, required: true, unique: true },
     completedAt: Date,
     expiresAt: { type: Date, required: true },
