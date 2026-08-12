@@ -7,6 +7,7 @@ import "express-async-errors";
 import http from "node:http";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
+import { isAllowedOrigin } from "./config/corsOrigin.js";
 import { connectDB, getMongoUri } from "./config/db.js";
 import { initSockets } from "./sockets/index.js";
 
@@ -40,23 +41,10 @@ import usersRoutes from "./routes/users.routes.js";
 
 const app = express();
 
-// CORS_ORIGIN covers the stable production domain (comma-separate for more
-// than one). Vercel additionally gives every deploy — preview or
-// production — its own unique subdomain, so this project's own *.vercel.app
-// deployments are allowed on top of that instead of needing a Render env
-// var update every time a new deploy URL shows up.
-const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const VERCEL_PREVIEW_PATTERN = /^https:\/\/sign-shop-management-system(-[a-z0-9-]+)?\.vercel\.app$/;
-
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin) || VERCEL_PREVIEW_PATTERN.test(origin)) {
-        return callback(null, true);
-      }
+      if (isAllowedOrigin(origin)) return callback(null, true);
       callback(new Error("Not allowed by CORS"));
     },
   })

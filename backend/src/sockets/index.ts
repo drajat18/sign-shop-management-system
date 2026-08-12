@@ -1,13 +1,19 @@
 import type { Server as HttpServer } from "node:http";
 import jwt from "jsonwebtoken";
 import { Server as SocketIOServer } from "socket.io";
+import { isAllowedOrigin } from "../config/corsOrigin.js";
 import type { AuthPayload } from "../middleware/auth.js";
 
 let io: SocketIOServer | undefined;
 
 export function initSockets(httpServer: HttpServer): SocketIOServer {
   io = new SocketIOServer(httpServer, {
-    cors: { origin: process.env.CORS_ORIGIN },
+    cors: {
+      origin(origin, callback) {
+        if (isAllowedOrigin(origin)) return callback(null, true);
+        callback(new Error("Not allowed by CORS"));
+      },
+    },
   });
 
   // Every client joins a room scoped to its own shop so real-time events
