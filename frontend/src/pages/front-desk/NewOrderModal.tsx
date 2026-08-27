@@ -129,7 +129,7 @@ export default function NewOrderModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 700 }}>New order</h2>
@@ -143,75 +143,84 @@ export default function NewOrderModal({
         </div>
 
         <form onSubmit={handleSubmit}>
-          <p className="section-label">Customer</p>
-          <div className="tab-toggle">
-            <button
-              type="button"
-              className={customerMode === "existing" ? "active" : ""}
-              onClick={() => setCustomerMode("existing")}
-              disabled={customers.length === 0}
-            >
-              Existing
-            </button>
-            <button
-              type="button"
-              className={customerMode === "new" ? "active" : ""}
-              onClick={() => setCustomerMode("new")}
-            >
-              New customer
-            </button>
-          </div>
+          <div className="new-order-layout">
+            <div className="new-order-sidebar">
+              <p className="section-label" style={{ marginTop: 0 }}>
+                Customer
+              </p>
+              <div className="tab-toggle">
+                <button
+                  type="button"
+                  className={customerMode === "existing" ? "active" : ""}
+                  onClick={() => setCustomerMode("existing")}
+                  disabled={customers.length === 0}
+                >
+                  Existing
+                </button>
+                <button
+                  type="button"
+                  className={customerMode === "new" ? "active" : ""}
+                  onClick={() => setCustomerMode("new")}
+                >
+                  New customer
+                </button>
+              </div>
 
-          {customerMode === "existing" ? (
-            <label className="field">
-              Customer
-              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                <option value="">Select a customer…</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <label className="field">
-                Name
-                <input value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
-              </label>
-              <label className="field">
-                Phone
-                <input value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
-              </label>
-              <label className="field" style={{ gridColumn: "1 / -1" }}>
-                Email
-                <input
-                  type="email"
-                  value={newCustomerEmail}
-                  onChange={(e) => setNewCustomerEmail(e.target.value)}
-                />
-              </label>
+              {customerMode === "existing" ? (
+                <label className="field">
+                  Customer
+                  <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                    <option value="">Select a customer…</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <label className="field">
+                    Name
+                    <input value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    Phone
+                    <input value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    Email
+                    <input
+                      type="email"
+                      value={newCustomerEmail}
+                      onChange={(e) => setNewCustomerEmail(e.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
+
+              <p className="section-label">Order details</p>
+              <div style={{ display: "grid", gap: 12 }}>
+                <label className="field">
+                  Due date
+                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                </label>
+                <label className="field">
+                  Order notes
+                  <input
+                    placeholder="Special instructions for the whole order…"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </label>
+              </div>
             </div>
-          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12 }}>
-            <label className="field">
-              Due date
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </label>
-            <label className="field">
-              Order notes
-              <input
-                placeholder="Special instructions for the whole order…"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </label>
-          </div>
-
-          <p className="section-label">Line items</p>
-          {items.map((item, i) => (
+            <div className="new-order-main">
+              <p className="section-label" style={{ marginTop: 0 }}>
+                Line items
+              </p>
+              {items.map((item, i) => (
             <div className="item-card" key={i}>
               <div className="item-card-header">
                 <span className="item-card-title">Item {i + 1}</span>
@@ -252,9 +261,6 @@ export default function NewOrderModal({
                     onChange={(e) => updateItem(i, { material: e.target.value })}
                   />
                 </label>
-              </div>
-
-              <div className="item-grid-secondary">
                 <label className="field">
                   Quantity
                   <input
@@ -322,25 +328,27 @@ export default function NewOrderModal({
                 </div>
               </div>
             </div>
-          ))}
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => setItems((prev) => [...prev, emptyItem()])}
-          >
-            + Add item
-          </button>
+              ))}
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setItems((prev) => [...prev, emptyItem()])}
+              >
+                + Add item
+              </button>
 
-          {items.some((i) => i.materialCostEstimate !== undefined) && (
-            <p className="cell-muted" style={{ fontSize: 13, marginBottom: 8 }}>
-              Estimated material cost: $
-              {items.reduce((sum, i) => sum + (i.materialCostEstimate ?? 0), 0).toFixed(2)} (simulated)
-            </p>
-          )}
+              {items.some((i) => i.materialCostEstimate !== undefined) && (
+                <p className="cell-muted" style={{ fontSize: 13, marginTop: 12 }}>
+                  Estimated material cost: $
+                  {items.reduce((sum, i) => sum + (i.materialCostEstimate ?? 0), 0).toFixed(2)} (simulated)
+                </p>
+              )}
 
-          <div className="order-total">
-            <span>Total</span>
-            <span>${total.toFixed(2)}</span>
+              <div className="order-total">
+                <span>Total</span>
+                <span>${total.toFixed(2)}</span>
+              </div>
+            </div>
           </div>
 
           {error && <p className="form-error">{error}</p>}

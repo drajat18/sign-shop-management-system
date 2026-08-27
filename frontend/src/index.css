@@ -496,6 +496,10 @@ textarea {
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text);
+  /* Lets this shrink below its input's natural content width when it's a
+     grid/flex item in a narrow column — otherwise it refuses to shrink and
+     forces the whole row wider than its container. */
+  min-width: 0;
 }
 
 .field input {
@@ -567,10 +571,45 @@ textarea {
   max-width: 860px;
   max-height: 90vh;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 32px;
+}
+
+/* Wider shell for forms that benefit from a side-by-side layout instead of
+   one long scrolling column — order details stay pinned in a sidebar while
+   line items get the rest of the width to breathe in. */
+.modal-wide {
+  width: min(95vw, 1500px);
+  max-width: 1500px;
+}
+
+.new-order-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 32px;
+  align-items: start;
+  /* Without this, grid items default to a min-width based on their content
+     (an <input>'s natural size), which stops the columns from actually
+     shrinking to fit and forces the whole row — and the modal — wider than
+     intended, showing up as an unwanted horizontal scrollbar. */
+  min-width: 0;
+}
+
+.new-order-sidebar,
+.new-order-main {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .new-order-layout {
+    grid-template-columns: 1fr;
+  }
+  .new-order-sidebar {
+    position: static;
+  }
 }
 
 .modal-header {
@@ -626,19 +665,26 @@ textarea {
   margin-bottom: 0;
 }
 
-/* Sign type / size / material */
+/* Sign type / size / material / quantity / price — one row when there's
+   room for it, so an item's core details are scannable at a glance instead
+   of split across two stacked grids. */
 .item-grid-primary {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr 100px 130px;
   gap: 16px;
 }
 
-/* Quantity / price */
 .item-grid-secondary {
   display: grid;
   grid-template-columns: 140px 160px 1fr;
   gap: 16px;
   margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .item-grid-primary {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .item-description-field,

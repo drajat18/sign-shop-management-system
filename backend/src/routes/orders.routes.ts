@@ -227,6 +227,15 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     emitToShop(shopId, EVENTS.JOB_CREATED, job.toJSON());
   }
 
+  const itemCount = orderItems.length;
+  await notifyCustomer(req.models!, shopId, order, customer, {
+    subject: "Order confirmed",
+    text: `Hi! We've received your order — ${itemCount} item${itemCount === 1 ? "" : "s"}, total $${total.toFixed(2)}.${
+      dueDate ? ` Expected by ${new Date(dueDate).toLocaleDateString()}.` : ""
+    } We'll keep you updated as it moves through production.`,
+    trigger: "order_created",
+  });
+
   res.status(201).json({ order: populatedOrder, items: orderItems, jobs });
 });
 
@@ -234,7 +243,7 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
 // own production job — used by the order edit view's "add item" control.
 router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Order, OrderItem, ProductionJob } = req.models!;
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findById(req.params.id).populate("customer");
   if (!order) return res.status(404).json({ error: "Order not found" });
 
   const { signType, size, material, description, quantity, price, materialCostEstimate, materialCostVendor } =
@@ -258,6 +267,28 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
   await recomputeOrderTotal(req.models!, order.id);
 
   emitToShop(req.auth!.shopId, EVENTS.JOB_CREATED, job.toJSON());
+
+  // recomputeOrderTotal writes straight to the DB rather than mutating
+  // `order`, so the item count + total here need a fresh read to reflect
+  // the item we just added.
+  const [itemCount, updatedOrder] = await Promise.all([
+    OrderItem.countDocuments({ order: order._id }),
+    Order.findById(order._id),
+  ]);
+  await notifyCustomer(
+    req.models!,
+    req.auth!.shopId,
+    order,
+    order.customer as unknown as CustomerDoc,
+    {
+      subject: "A new item was added to your order",
+      text: `Hi! We've added "${signType}" to your order. It now has ${itemCount} item${
+        itemCount === 1 ? "" : "s"
+      }, total $${(updatedOrder?.total ?? 0).toFixed(2)}.`,
+      trigger: "order_item_added",
+    }
+  );
+
   res.status(201).json({ item, job });
 });
 
@@ -333,6 +364,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   };
 
   const previousStatus = existing.status;
+  const previousDueDateTime = existing.dueDate ? new Date(existing.dueDate).getTime() : undefined;
   Object.assign(
     existing,
     Object.fromEntries(
@@ -370,6 +402,23 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
         subject: `Your order is now: ${label}`,
         text: `Hi! Just a quick update — your order's status changed to "${label}".`,
         trigger: "order_status_changed",
+      }
+    );
+  }
+
+  const newDueDateTime = existing.dueDate ? new Date(existing.dueDate).getTime() : undefined;
+  if (dueDate !== undefined && newDueDateTime !== previousDueDateTime) {
+    await notifyCustomer(
+      req.models!,
+      req.auth!.shopId,
+      existing,
+      existing.customer as unknown as CustomerDoc,
+      {
+        subject: "Your order's due date changed",
+        text: `Hi! Just a quick update — your order's due date is now ${new Date(
+          existing.dueDate!
+        ).toLocaleDateString()}.`,
+        trigger: "order_due_date_changed",
       }
     );
   }
