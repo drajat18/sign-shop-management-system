@@ -13,6 +13,12 @@ function getTransporter(): Transporter {
       auth: process.env.SMTP_USER
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
         : undefined,
+      // Nodemailer's defaults (2min connection, 10min socket) would hold a
+      // whole request open that long if the SMTP host is slow or
+      // unreachable — this bounds the worst case to a few seconds instead.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
   }
   return transporter;

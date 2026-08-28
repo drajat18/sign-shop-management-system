@@ -111,7 +111,7 @@ router.post("/:token/approve", async (req, res) => {
   emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
 
   const customerName = (order.customer as unknown as { name?: string } | null)?.name ?? "A customer";
-  await notifyShopAdmins(models, order._id, {
+  void notifyShopAdmins(models, order._id, {
     subject: "Design approved",
     text: `${customerName} approved their design — the order is moving to production.`,
     trigger: "customer_approved",
@@ -150,7 +150,7 @@ router.post("/:token/messages", async (req, res) => {
   emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
 
   const customerName = (order.customer as unknown as { name?: string } | null)?.name ?? "A customer";
-  await notifyShopAdmins(models, order._id, {
+  void notifyShopAdmins(models, order._id, {
     subject: `New message from ${customerName}`,
     text: body.trim(),
     trigger: "customer_message",

@@ -35,6 +35,29 @@ async function getPortalUrl(
   return `${process.env.FRONTEND_URL}/portal/${shopId}/${tokenRecord.token}`;
 }
 
+// Callers fire these without awaiting (or await them for sequencing, since
+// they never reject) — a slow or broken SMTP/Twilio provider should never
+// hold up the request that triggered the notification. Each channel is
+// attempted independently so one failing (or timing out) doesn't stop the
+// other, or stop its own log entry from being written.
+async function deliver(
+  models: ShopModels,
+  channel: "email" | "sms",
+  send: () => Promise<void>,
+  log: { to: string; subject?: string; body: string; trigger: string; order: Types.ObjectId | string }
+): Promise<void> {
+  try {
+    await send();
+  } catch (err) {
+    console.error(`Failed to send ${channel} notification (trigger: ${log.trigger}):`, err);
+  }
+  try {
+    await models.NotificationLog.create({ channel, ...log });
+  } catch (err) {
+    console.error(`Failed to write ${channel} notification log (trigger: ${log.trigger}):`, err);
+  }
+}
+
 // Emails (and, if the customer has a phone on file, texts) a customer
 // about their order — falls back to console-logging both channels when
 // SMTP/Twilio aren't configured, same as every other integration here.
@@ -47,13 +70,16 @@ export async function notifyCustomer(
 ): Promise<void> {
   if (!customer) return;
 
-  const portalUrl = await getPortalUrl(models, order, shopId);
+  let portalUrl: string | null = null;
+  try {
+    portalUrl = await getPortalUrl(models, order, shopId);
+  } catch (err) {
+    console.error(`Failed to resolve portal link (trigger: ${trigger}):`, err);
+  }
   const fullText = portalUrl ? `${text}\n\nView your order: ${portalUrl}` : text;
 
   if (customer.email) {
-    await sendEmail({ to: customer.email, subject, text: fullText });
-    await models.NotificationLog.create({
-      channel: "email",
+    await deliver(models, "email", () => sendEmail({ to: customer.email!, subject, text: fullText }), {
       to: customer.email,
       subject,
       body: fullText,
@@ -62,9 +88,7 @@ export async function notifyCustomer(
     });
   }
   if (customer.phone) {
-    await sendSms({ to: customer.phone, body: fullText });
-    await models.NotificationLog.create({
-      channel: "sms",
+    await deliver(models, "sms", () => sendSms({ to: customer.phone!, body: fullText }), {
       to: customer.phone,
       body: fullText,
       trigger,
@@ -84,9 +108,7 @@ export async function notifyShopAdmins(
   const admins = await models.User.find({ role: "admin", active: true }).select("email");
   for (const admin of admins) {
     if (!admin.email) continue;
-    await sendEmail({ to: admin.email, subject, text });
-    await models.NotificationLog.create({
-      channel: "email",
+    await deliver(models, "email", () => sendEmail({ to: admin.email!, subject, text }), {
       to: admin.email,
       subject,
       body: text,

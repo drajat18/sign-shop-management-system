@@ -228,7 +228,7 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
   }
 
   const itemCount = orderItems.length;
-  await notifyCustomer(req.models!, shopId, order, customer, {
+  void notifyCustomer(req.models!, shopId, order, customer, {
     subject: "Order confirmed",
     text: `Hi! We've received your order — ${itemCount} item${itemCount === 1 ? "" : "s"}, total $${total.toFixed(2)}.${
       dueDate ? ` Expected by ${new Date(dueDate).toLocaleDateString()}.` : ""
@@ -275,7 +275,7 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
     OrderItem.countDocuments({ order: order._id }),
     Order.findById(order._id),
   ]);
-  await notifyCustomer(
+  void notifyCustomer(
     req.models!,
     req.auth!.shopId,
     order,
@@ -334,7 +334,7 @@ router.patch("/bulk", requireRole("admin", "manager", "front_desk"), async (req,
 
     if (status && status !== previousStatus) {
       const label = status.replace("_", " ");
-      await notifyCustomer(
+      void notifyCustomer(
         req.models!,
         req.auth!.shopId,
         existing,
@@ -393,7 +393,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
 
   if (status && status !== previousStatus) {
     const label = status.replace("_", " ");
-    await notifyCustomer(
+    void notifyCustomer(
       req.models!,
       req.auth!.shopId,
       existing,
@@ -408,7 +408,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
 
   const newDueDateTime = existing.dueDate ? new Date(existing.dueDate).getTime() : undefined;
   if (dueDate !== undefined && newDueDateTime !== previousDueDateTime) {
-    await notifyCustomer(
+    void notifyCustomer(
       req.models!,
       req.auth!.shopId,
       existing,
@@ -470,7 +470,7 @@ router.post("/:id/messages", requireRole("admin", "manager", "front_desk"), asyn
 
   emitToShop(req.auth!.shopId, EVENTS.ORDER_MESSAGE_CREATED, { orderId: order.id, message });
 
-  await notifyCustomer(req.models!, req.auth!.shopId, order, order.customer as unknown as CustomerDoc, {
+  void notifyCustomer(req.models!, req.auth!.shopId, order, order.customer as unknown as CustomerDoc, {
     subject: "New message about your order",
     text: body.trim(),
     trigger: "staff_message",

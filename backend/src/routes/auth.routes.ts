@@ -94,14 +94,20 @@ router.post("/forgot-password", async (req, res) => {
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password?email=${encodeURIComponent(normalizedEmail)}&token=${rawToken}`;
   const subject = "Reset your Sign Shop password";
   const text = `Click the link below to reset your password. This link expires in 1 hour.\n\n${resetUrl}`;
-  await sendEmail({ to: normalizedEmail, subject, text });
-  await models.NotificationLog.create({
+  // Fired without awaiting — a slow or broken SMTP provider must never hold
+  // this request open (login/reset flows are exactly where a hang is most
+  // visible to a user), and the response below never depended on send
+  // success anyway (same generic message either way, deliberately).
+  void sendEmail({ to: normalizedEmail, subject, text }).catch((err) =>
+    console.error("Failed to send password reset email:", err)
+  );
+  void models.NotificationLog.create({
     channel: "email",
     to: normalizedEmail,
     subject,
     body: text,
     trigger: "password_reset",
-  });
+  }).catch((err) => console.error("Failed to write password reset notification log:", err));
 
   res.json(genericResponse);
 });
