@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client.js";
 import { usePlatformAuth } from "../../auth/PlatformAuthContext.js";
-import type { Employee, PlanTier, Shop } from "../../types/index.js";
+import type { AuditLogEntry, Employee, PlanTier, Shop } from "../../types/index.js";
 
 const PLAN_TIERS: { value: PlanTier; label: string }[] = [
   { value: "starter", label: "Starter — $59.99/mo" },
@@ -26,6 +26,8 @@ export default function ShopDetailModal({
   const [linkCopied, setLinkCopied] = useState(false);
   const [linkMode, setLinkMode] = useState<"stripe" | "dummy" | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [shopStatusBusy, setShopStatusBusy] = useState(false);
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[] | null>(null);
   const canDeactivate = user?.role === "owner";
   const canManageBilling = user?.role === "owner" || user?.role === "billing";
 
@@ -39,6 +41,36 @@ export default function ShopDetailModal({
   }
 
   useEffect(loadShop, [shopId, token]);
+
+  function loadAuditLog() {
+    apiFetch<AuditLogEntry[]>(`/platform/shops/${shopId}/audit-log`, { token })
+      .then(setAuditLog)
+      .catch(console.error);
+  }
+
+  useEffect(loadAuditLog, [shopId, token]);
+
+  async function handleDeactivateShop() {
+    setShopStatusBusy(true);
+    try {
+      await apiFetch(`/platform/shops/${shopId}/deactivate`, { method: "PATCH", token });
+      loadShop();
+      loadAuditLog();
+    } finally {
+      setShopStatusBusy(false);
+    }
+  }
+
+  async function handleReactivateShop() {
+    setShopStatusBusy(true);
+    try {
+      await apiFetch(`/platform/shops/${shopId}/reactivate`, { method: "PATCH", token });
+      loadShop();
+      loadAuditLog();
+    } finally {
+      setShopStatusBusy(false);
+    }
+  }
 
   async function handleCopyBillingLink() {
     setBillingError(null);
@@ -79,11 +111,50 @@ export default function ShopDetailModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 style={{ fontSize: 18, fontWeight: 700 }}>{shopName}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>{shopName}</h2>
+            {shop && (
+              <span className={`badge ${shop.active ? "badge-order-completed" : "badge-job-blocked"}`}>
+                {shop.active ? "Active" : "Deactivated"}
+              </span>
+            )}
+          </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
+
+        {canDeactivate && shop && (
+          <div className="item-card" style={{ marginBottom: 20 }}>
+            <div className="item-card-header">
+              <span className="item-card-title">Shop status</span>
+            </div>
+            <p className="cell-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+              {shop.active
+                ? "Deactivating blocks every login for this shop, staff included — existing sessions run until they expire on their own."
+                : "This shop is deactivated. No one at this shop can log in until it's reactivated."}
+            </p>
+            {shop.active ? (
+              <button
+                type="button"
+                className="btn btn-outline-danger btn-sm"
+                onClick={handleDeactivateShop}
+                disabled={shopStatusBusy}
+              >
+                {shopStatusBusy ? "Deactivating…" : "Deactivate shop"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={handleReactivateShop}
+                disabled={shopStatusBusy}
+              >
+                {shopStatusBusy ? "Reactivating…" : "Reactivate shop"}
+              </button>
+            )}
+          </div>
+        )}
 
         {canManageBilling && (
           <div className="item-card" style={{ marginBottom: 20 }}>
@@ -186,6 +257,39 @@ export default function ShopDetailModal({
                       )}
                     </td>
                   )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <p className="section-label">Activity log</p>
+        <p className="cell-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+          Logins, employee changes, customer messages/approvals, and support impersonation for this
+          shop — most recent first.
+        </p>
+
+        {auditLog === null ? (
+          <p className="cell-muted">Loading…</p>
+        ) : auditLog.length === 0 ? (
+          <p className="cell-muted" style={{ fontSize: 13 }}>
+            Nothing logged yet.
+          </p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Actor</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLog.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="cell-primary">{entry.action.replace(/_/g, " ")}</td>
+                  <td className="cell-muted">{entry.actorEmail ?? "—"}</td>
+                  <td className="cell-muted">{new Date(entry.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>

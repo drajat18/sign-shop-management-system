@@ -4,8 +4,14 @@ import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { usePlatformAuth } from "../../auth/PlatformAuthContext.js";
 import { ROLE_LANDING_PAGE } from "../../auth/roles.js";
-import type { Shop, User } from "../../types/index.js";
+import type { PlanTier, Shop, User } from "../../types/index.js";
 import ShopDetailModal from "./ShopDetailModal.js";
+
+const PLAN_TIERS: { value: PlanTier; label: string }[] = [
+  { value: "starter", label: "Starter — $59.99/mo" },
+  { value: "growth", label: "Growth — $119.99/mo" },
+  { value: "pro", label: "Pro — $199.99/mo" },
+];
 
 export default function ShopsPage() {
   const { token, user } = usePlatformAuth();
@@ -16,6 +22,7 @@ export default function ShopsPage() {
   const [shopName, setShopName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminName, setAdminName] = useState("");
+  const [planTier, setPlanTier] = useState<PlanTier>("starter");
   const [created, setCreated] = useState<{ adminEmail: string; adminPassword: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -37,12 +44,17 @@ export default function ShopsPage() {
     try {
       const result = await apiFetch<{ adminEmail: string; adminPassword: string }>(
         "/platform/shops",
-        { method: "POST", token, body: JSON.stringify({ shopName, adminEmail, adminName: adminName || undefined }) }
+        {
+          method: "POST",
+          token,
+          body: JSON.stringify({ shopName, adminEmail, adminName: adminName || undefined, planTier }),
+        }
       );
       setCreated(result);
       setShopName("");
       setAdminEmail("");
       setAdminName("");
+      setPlanTier("starter");
       loadShops();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create shop");
@@ -114,6 +126,16 @@ export default function ShopsPage() {
                 <label className="field">
                   Admin name (optional)
                   <input value={adminName} onChange={(e) => setAdminName(e.target.value)} />
+                </label>
+                <label className="field">
+                  Plan
+                  <select value={planTier} onChange={(e) => setPlanTier(e.target.value as PlanTier)}>
+                    {PLAN_TIERS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
               {error && <p className="form-error">{error}</p>}

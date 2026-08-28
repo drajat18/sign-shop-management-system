@@ -253,7 +253,7 @@ export default function OrderDetailModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         {!order ? (
           <p className="cell-muted">Loading order…</p>
         ) : (
@@ -288,65 +288,8 @@ export default function OrderDetailModal({
               </div>
             </div>
 
-            <div className="item-card" style={{ marginBottom: 16 }}>
-              <div className="item-card-header">
-                <span className="item-card-title">Messages</span>
-                {order.customerResponseType && (
-                  <span
-                    className={`badge ${order.customerResponseType === "approved" ? "badge-order-completed" : "badge-order-new"}`}
-                  >
-                    {order.customerResponseType === "approved" ? "Customer approved" : "New"}
-                  </span>
-                )}
-              </div>
-
-              {messages === null ? (
-                <p className="cell-muted" style={{ fontSize: 13 }}>
-                  Loading…
-                </p>
-              ) : messages.length === 0 ? (
-                <p className="cell-muted" style={{ fontSize: 13 }}>
-                  No messages yet. Anything you send here reaches the customer on their order link.
-                </p>
-              ) : (
-                <div className="message-thread">
-                  {messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`message-bubble ${m.sender === "staff" ? "message-bubble-staff" : "message-bubble-customer"}`}
-                    >
-                      {m.body}
-                      <span className="message-bubble-meta">
-                        {m.sender === "staff" ? m.staffUser?.name ?? "Staff" : order.customer?.name ?? "Customer"} ·{" "}
-                        {new Date(m.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {editable && (
-                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  <input
-                    style={{ flex: 1 }}
-                    placeholder="Reply to the customer…"
-                    value={messageBody}
-                    onChange={(e) => setMessageBody(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-                    disabled={messageBusy}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleSendMessage}
-                    disabled={messageBusy || !messageBody.trim()}
-                  >
-                    {messageBusy ? "Sending…" : "Send"}
-                  </button>
-                </div>
-              )}
-            </div>
-
+            <div className="order-detail-layout">
+              <div className="order-detail-main">
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
               <label className="field">
                 Status
@@ -757,6 +700,67 @@ export default function OrderDetailModal({
             <div className="order-total">
               <span>Total</span>
               <span>${order.total.toFixed(2)}</span>
+            </div>
+              </div>
+
+              <div className="order-messages-panel">
+                <div className="order-messages-panel-header">
+                  <span className="item-card-title">Messages</span>
+                  {order.customerResponseType && (
+                    <span
+                      className={`badge ${order.customerResponseType === "approved" ? "badge-order-completed" : "badge-order-new"}`}
+                    >
+                      {order.customerResponseType === "approved" ? "Customer approved" : "New"}
+                    </span>
+                  )}
+                </div>
+
+                {messages === null ? (
+                  <p className="order-messages-panel-empty cell-muted" style={{ fontSize: 13 }}>
+                    Loading…
+                  </p>
+                ) : messages.length === 0 ? (
+                  <p className="order-messages-panel-empty cell-muted" style={{ fontSize: 13 }}>
+                    No messages yet. Anything you send here reaches the customer on their order link.
+                  </p>
+                ) : (
+                  <div className="message-thread">
+                    {messages.map((m) => (
+                      <div
+                        key={m.id}
+                        className={`message-bubble ${m.sender === "staff" ? "message-bubble-staff" : "message-bubble-customer"}`}
+                      >
+                        {m.body}
+                        <span className="message-bubble-meta">
+                          {m.sender === "staff" ? m.staffUser?.name ?? "Staff" : order.customer?.name ?? "Customer"} ·{" "}
+                          {new Date(m.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {editable && (
+                  <div className="order-messages-panel-composer">
+                    <input
+                      style={{ flex: 1 }}
+                      placeholder="Reply to the customer…"
+                      value={messageBody}
+                      onChange={(e) => setMessageBody(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                      disabled={messageBusy}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleSendMessage}
+                      disabled={messageBusy || !messageBody.trim()}
+                    >
+                      {messageBusy ? "Sending…" : "Send"}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {error && <p className="form-error">{error}</p>}

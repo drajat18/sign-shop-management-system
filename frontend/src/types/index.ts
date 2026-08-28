@@ -240,6 +240,15 @@ export interface Shop {
   createdAt: string;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  actorEmail?: string;
+  targetId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface PortalOrderItem {
   id: string;
   signType: string;

@@ -612,6 +612,77 @@ textarea {
   }
 }
 
+/* Order detail modal — messages get a dedicated, pinned panel instead of
+   sitting inline above the order, so a long conversation never pushes the
+   status/items/total out of view, and staff can reference the thread while
+   scrolling through the order itself. */
+.order-detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 28px;
+  align-items: start;
+  min-width: 0;
+}
+
+.order-detail-main {
+  min-width: 0;
+}
+
+.order-messages-panel {
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(72vh, 640px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.order-messages-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.order-messages-panel .message-thread {
+  flex: 1;
+  max-height: none;
+  padding: 12px 16px;
+  margin: 0;
+}
+
+.order-messages-panel-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 16px;
+}
+
+.order-messages-panel-composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .order-detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .order-messages-panel {
+    position: static;
+    max-height: 420px;
+  }
+}
+
 .modal-header {
   display: flex;
   align-items: flex-start;

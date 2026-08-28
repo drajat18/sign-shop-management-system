@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
+import { JOB_STATUSES } from "../models/ProductionJob.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
 
 const router = Router();
@@ -50,6 +51,10 @@ router.patch("/:id", requireRole("admin", "manager", "production"), async (req, 
   const isProduction = req.auth!.role === "production";
   if (isProduction && job.assignedTo?.toString() !== req.auth!.userId) {
     return res.status(403).json({ error: "Not assigned to this job" });
+  }
+
+  if (req.body.status !== undefined && !JOB_STATUSES.includes(req.body.status)) {
+    return res.status(400).json({ error: `status must be one of: ${JOB_STATUSES.join(", ")}` });
   }
 
   const updates = isProduction

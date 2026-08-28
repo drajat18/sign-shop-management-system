@@ -89,6 +89,62 @@ router.patch("/:id/users/:userId/reactivate", requirePlatformRole("owner"), asyn
   res.json(user);
 });
 
+// Switches the whole shop off — every user's next login attempt is
+// rejected (see auth.routes.ts), not just one employee at a time. Existing
+// sessions still run until their token naturally expires, same tradeoff as
+// deactivating a single employee above; this isn't an instant kill switch.
+router.patch("/:id/deactivate", requirePlatformRole("owner"), async (req, res) => {
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const platformUser = await PlatformUser.findById(req.platformAuth!.platformUserId);
+  if (!platformUser) return res.status(401).json({ error: "Invalid token" });
+
+  shop.active = false;
+  await shop.save();
+
+  const { AuditLog } = getShopModels(getShopConnection(shop.id));
+  await AuditLog.create({
+    action: "shop_deactivated",
+    actorEmail: platformUser.email,
+    metadata: { platformUserId: platformUser.id, platformUserName: platformUser.name },
+  });
+
+  res.json(shop);
+});
+
+router.patch("/:id/reactivate", requirePlatformRole("owner"), async (req, res) => {
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const platformUser = await PlatformUser.findById(req.platformAuth!.platformUserId);
+  if (!platformUser) return res.status(401).json({ error: "Invalid token" });
+
+  shop.active = true;
+  await shop.save();
+
+  const { AuditLog } = getShopModels(getShopConnection(shop.id));
+  await AuditLog.create({
+    action: "shop_reactivated",
+    actorEmail: platformUser.email,
+    metadata: { platformUserId: platformUser.id, platformUserName: platformUser.name },
+  });
+
+  res.json(shop);
+});
+
+// Read-only view onto the trail AuditLog entries already write on every
+// login, employee change, customer message/approval, and impersonation —
+// nothing new is captured here, this just finally surfaces it.
+router.get("/:id/audit-log", requirePlatformRole("owner", "support"), async (req, res) => {
+  const shop = await Shop.findById(req.params.id);
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  const { AuditLog } = getShopModels(getShopConnection(shop.id));
+  const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(200);
+  res.json(logs);
+});
+
 // The whole manual-onboarding workflow, callable from the console instead
 // of needing server/CLI access.
 router.post("/", requirePlatformRole("owner", "onboarding"), async (req, res) => {
