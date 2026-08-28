@@ -210,6 +210,8 @@ export interface NotificationLogEntry {
   subject?: string;
   body: string;
   trigger: string;
+  status?: "sent" | "failed";
+  error?: string;
   createdAt: string;
 }
 

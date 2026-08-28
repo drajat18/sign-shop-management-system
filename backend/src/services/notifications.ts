@@ -46,13 +46,17 @@ async function deliver(
   send: () => Promise<void>,
   log: { to: string; subject?: string; body: string; trigger: string; order: Types.ObjectId | string }
 ): Promise<void> {
+  let status: "sent" | "failed" = "sent";
+  let error: string | undefined;
   try {
     await send();
   } catch (err) {
+    status = "failed";
+    error = err instanceof Error ? err.message : String(err);
     console.error(`Failed to send ${channel} notification (trigger: ${log.trigger}):`, err);
   }
   try {
-    await models.NotificationLog.create({ channel, ...log });
+    await models.NotificationLog.create({ channel, status, error, ...log });
   } catch (err) {
     console.error(`Failed to write ${channel} notification log (trigger: ${log.trigger}):`, err);
   }

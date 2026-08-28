@@ -657,6 +657,7 @@ export default function SettingsPage() {
                     <th>Channel</th>
                     <th>To</th>
                     <th>Trigger</th>
+                    <th>Status</th>
                     <th>Date</th>
                   </tr>
                 </thead>
@@ -666,6 +667,16 @@ export default function SettingsPage() {
                       <td className="cell-muted">{log.channel === "email" ? "Email" : "SMS"}</td>
                       <td className="cell-primary">{log.to}</td>
                       <td className="cell-muted">{log.trigger.replace(/_/g, " ")}</td>
+                      <td>
+                        <span className={`badge ${log.status === "failed" ? "badge-job-blocked" : "badge-order-completed"}`}>
+                          {log.status === "failed" ? "Failed" : "Sent"}
+                        </span>
+                        {log.status === "failed" && log.error && (
+                          <p className="cell-muted" style={{ fontSize: 12, marginTop: 4, maxWidth: 260 }}>
+                            {log.error}
+                          </p>
+                        )}
+                      </td>
                       <td className="cell-muted">{new Date(log.createdAt).toLocaleString()}</td>
                     </tr>
                   ))}
