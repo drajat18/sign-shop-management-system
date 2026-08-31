@@ -4,7 +4,7 @@ import type { Role } from "../types/index.js";
 // guards can't drift apart from each other.
 export const PAGE_ACCESS = {
   orders: ["admin", "manager", "front_desk"] as Role[],
-  jobs: ["admin", "manager", "production"] as Role[],
+  jobs: ["admin", "manager", "front_desk", "production"] as Role[],
   employees: ["admin"] as Role[],
   settings: ["admin"] as Role[],
   reports: ["admin"] as Role[],

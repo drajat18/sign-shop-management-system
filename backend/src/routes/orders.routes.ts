@@ -167,16 +167,23 @@ router.get("/:id", requireRole("admin", "manager", "front_desk", "production"), 
 // up on the Production page instead of orders and jobs living in silos.
 router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Customer, Order, OrderItem, ProductionJob } = req.models!;
-  const { customerId, newCustomer, dueDate, description, items } = req.body as {
-    customerId?: string;
-    newCustomer?: { name: string; email?: string; phone?: string };
-    dueDate?: string;
-    description?: string;
-    items: NewOrderItem[];
-  };
+  const { customerId, newCustomer, dueDate, description, installRequired, installAddress, installCharge, items } =
+    req.body as {
+      customerId?: string;
+      newCustomer?: { name: string; email?: string; phone?: string };
+      dueDate?: string;
+      description?: string;
+      installRequired?: boolean;
+      installAddress?: string;
+      installCharge?: number;
+      items: NewOrderItem[];
+    };
 
   if (!customerId && !newCustomer?.name) {
     return res.status(400).json({ error: "customerId or newCustomer.name is required" });
+  }
+  if (!dueDate) {
+    return res.status(400).json({ error: "Due date is required" });
   }
   if (!items?.length) {
     return res.status(400).json({ error: "At least one line item is required" });
@@ -186,18 +193,26 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
       return res.status(400).json({ error: "Each item needs a signType and a numeric price" });
     }
   }
+  if (installRequired && !installAddress?.trim()) {
+    return res.status(400).json({ error: "Installation address is required when installation is needed" });
+  }
 
   const customer = customerId
     ? await Customer.findById(customerId)
     : await Customer.create(newCustomer);
   if (!customer) return res.status(404).json({ error: "Customer not found" });
 
-  const total = items.reduce((sum, item) => sum + item.price * (item.quantity ?? 1), 0);
+  const resolvedInstallCharge = installRequired ? installCharge ?? 0 : 0;
+  const total =
+    items.reduce((sum, item) => sum + item.price * (item.quantity ?? 1), 0) + resolvedInstallCharge;
 
   const order = await Order.create({
     customer: customer._id,
     dueDate,
     description,
+    installRequired: Boolean(installRequired),
+    installAddress: installRequired ? installAddress : undefined,
+    installCharge: resolvedInstallCharge,
     total,
     createdBy: req.auth!.userId,
   });
@@ -356,21 +371,46 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   const existing = await Order.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: "Order not found" });
 
-  const { status, dueDate, paymentStatus, description } = req.body as {
-    status?: string;
-    dueDate?: string;
-    paymentStatus?: string;
-    description?: string;
-  };
+  const { status, dueDate, paymentStatus, description, installRequired, installAddress, installCharge } =
+    req.body as {
+      status?: string;
+      dueDate?: string;
+      paymentStatus?: string;
+      description?: string;
+      installRequired?: boolean;
+      installAddress?: string;
+      installCharge?: number;
+    };
+
+  if (installRequired && !(installAddress ?? existing.installAddress)?.trim()) {
+    return res.status(400).json({ error: "Installation address is required when installation is needed" });
+  }
 
   const previousStatus = existing.status;
   const previousDueDateTime = existing.dueDate ? new Date(existing.dueDate).getTime() : undefined;
+  const totalNeedsRecompute =
+    (installRequired !== undefined && installRequired !== existing.installRequired) ||
+    (installCharge !== undefined && installCharge !== existing.installCharge);
   Object.assign(
     existing,
     Object.fromEntries(
-      Object.entries({ status, dueDate, paymentStatus, description }).filter(([, v]) => v !== undefined)
+      Object.entries({
+        status,
+        dueDate,
+        paymentStatus,
+        description,
+        installRequired,
+        installAddress: installRequired === false ? "" : installAddress,
+        installCharge,
+      }).filter(([, v]) => v !== undefined)
     )
   );
+  if (totalNeedsRecompute) {
+    const { OrderItem } = req.models!;
+    const items = await OrderItem.find({ order: existing._id });
+    const itemsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    existing.total = itemsTotal + (existing.installRequired ? existing.installCharge ?? 0 : 0);
+  }
   await existing.save();
 
   if (status && status !== previousStatus) {

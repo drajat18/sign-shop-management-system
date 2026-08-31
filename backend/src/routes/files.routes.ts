@@ -58,6 +58,7 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     fileName: stored.fileName,
     fileSize: data.length,
     order: orderId,
+    orderItem: orderItemId,
     uploadedBy: req.auth!.userId,
   });
 

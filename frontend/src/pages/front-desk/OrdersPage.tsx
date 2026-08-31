@@ -4,7 +4,7 @@ import { apiFetch } from "../../api/client.js";
 import { bulkUpdateOrders, exportOrdersCsv } from "../../api/orders.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { OrderStatusBadge } from "../../components/StatusBadge.js";
-import type { Order, OrderStatus } from "../../types/index.js";
+import type { DuplicateOrderSeed, Order, OrderStatus } from "../../types/index.js";
 import NewOrderModal from "./NewOrderModal.js";
 import OrderDetailModal from "./OrderDetailModal.js";
 
@@ -40,6 +40,7 @@ export default function OrdersPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [showNewOrder, setShowNewOrder] = useState(false);
+  const [duplicateSeed, setDuplicateSeed] = useState<DuplicateOrderSeed | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<OrderStatus>("new");
@@ -159,6 +160,11 @@ export default function OrdersPage() {
   function sortIndicator(field: SortField) {
     if (sortBy !== field) return "";
     return sortDir === "asc" ? " ▲" : " ▼";
+  }
+
+  function isOverdue(order: Order): boolean {
+    if (!order.dueDate || order.status === "completed") return false;
+    return new Date(order.dueDate).getTime() < Date.now();
   }
 
   return (
@@ -313,6 +319,11 @@ export default function OrdersPage() {
                   <td className="cell-muted">{order.itemsCount}</td>
                   <td className="cell-muted">
                     {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : "—"}
+                    {isOverdue(order) && (
+                      <span className="badge badge-job-blocked" style={{ marginLeft: 8 }}>
+                        Overdue
+                      </span>
+                    )}
                   </td>
                   <td>
                     <OrderStatusBadge status={order.status} />
@@ -357,9 +368,14 @@ export default function OrdersPage() {
 
       {showNewOrder && (
         <NewOrderModal
-          onClose={() => setShowNewOrder(false)}
+          duplicateFrom={duplicateSeed ?? undefined}
+          onClose={() => {
+            setShowNewOrder(false);
+            setDuplicateSeed(null);
+          }}
           onCreated={() => {
             setShowNewOrder(false);
+            setDuplicateSeed(null);
             loadOrders();
           }}
         />
@@ -371,6 +387,11 @@ export default function OrdersPage() {
           editable={canEdit}
           onClose={() => setOpenOrderId(null)}
           onChanged={loadOrders}
+          onDuplicate={(seed) => {
+            setDuplicateSeed(seed);
+            setOpenOrderId(null);
+            setShowNewOrder(true);
+          }}
         />
       )}
     </div>

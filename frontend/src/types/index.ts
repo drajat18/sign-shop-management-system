@@ -41,6 +41,9 @@ export interface Order {
   itemsCount: number;
   unreadMessageCount?: number;
   customerResponseType?: "approved" | "message";
+  installRequired?: boolean;
+  installAddress?: string;
+  installCharge?: number;
 }
 
 export interface OrderMessage {
@@ -57,6 +60,14 @@ export interface ArtworkFile {
   id: string;
   fileName: string;
   storageProvider: StorageProvider;
+}
+
+export interface FileVersion {
+  id: string;
+  fileName: string;
+  storageProvider: StorageProvider;
+  uploadedBy?: { id: string; name: string } | null;
+  createdAt: string;
 }
 
 export type StorageOAuthProvider = "dropbox" | "google_drive";
@@ -108,12 +119,18 @@ export interface OrderItem {
   job?: {
     id: string;
     status: JobStatus;
+    notes?: string;
     assignedTo?: { id: string; name: string } | null;
   } | null;
 }
 
 export interface OrderDetail extends Order {
   items: OrderItem[];
+}
+
+export interface DuplicateOrderSeed {
+  customerId: string;
+  items: NewOrderItemInput[];
 }
 
 export interface NewOrderItemInput {

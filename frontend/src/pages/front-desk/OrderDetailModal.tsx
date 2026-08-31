@@ -8,6 +8,8 @@ import { usePlan } from "../../auth/PlanContext.js";
 import CameraCaptureModal from "../../components/CameraCaptureModal.js";
 import { JobStatusBadge, OrderStatusBadge } from "../../components/StatusBadge.js";
 import type {
+  DuplicateOrderSeed,
+  FileVersion,
   NewOrderItemInput,
   OrderDetail,
   OrderItem,
@@ -49,11 +51,13 @@ export default function OrderDetailModal({
   editable,
   onClose,
   onChanged,
+  onDuplicate,
 }: {
   orderId: string;
   editable: boolean;
   onClose: () => void;
   onChanged: () => void;
+  onDuplicate?: (seed: DuplicateOrderSeed) => void;
 }) {
   const { token } = useAuth();
   const plan = usePlan();
@@ -77,6 +81,20 @@ export default function OrderDetailModal({
   const [messages, setMessages] = useState<OrderMessage[] | null>(null);
   const [messageBody, setMessageBody] = useState("");
   const [messageBusy, setMessageBusy] = useState(false);
+  const [fileHistory, setFileHistory] = useState<Record<string, FileVersion[]>>({});
+  const [historyOpenFor, setHistoryOpenFor] = useState<string | null>(null);
+
+  async function toggleFileHistory(itemId: string) {
+    if (historyOpenFor === itemId) {
+      setHistoryOpenFor(null);
+      return;
+    }
+    setHistoryOpenFor(itemId);
+    if (!fileHistory[itemId]) {
+      const versions = await apiFetch<FileVersion[]>(`/order-items/${itemId}/files`, { token });
+      setFileHistory((prev) => ({ ...prev, [itemId]: versions }));
+    }
+  }
 
   function loadOrder() {
     apiFetch<OrderDetail>(`/orders/${orderId}`, { token })
@@ -163,6 +181,11 @@ export default function OrderDetailModal({
     try {
       await uploadArtwork(file, orderId, itemId, token, itemStorage[itemId] ?? "internal");
       loadOrder();
+      setFileHistory((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -268,6 +291,28 @@ export default function OrderDetailModal({
                 </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {editable && onDuplicate && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() =>
+                      onDuplicate({
+                        customerId: order.customer.id,
+                        items: order.items.map((item) => ({
+                          signType: item.signType,
+                          size: item.size ?? "",
+                          material: item.material ?? "",
+                          description: item.description ?? "",
+                          quantity: item.quantity,
+                          price: item.price,
+                          file: null,
+                        })),
+                      })
+                    }
+                  >
+                    Duplicate order
+                  </button>
+                )}
                 {editable && plan?.features.customer_portal && (
                   <button
                     type="button"
@@ -379,13 +424,71 @@ export default function OrderDetailModal({
               )}
             </label>
 
+            {editable ? (
+              <div style={{ marginBottom: 16 }}>
+                <label className="field field-inline">
+                  <input
+                    type="checkbox"
+                    checked={order.installRequired ?? false}
+                    onChange={(e) => patchOrder({ installRequired: e.target.checked })}
+                  />
+                  Needs installation
+                </label>
+                {order.installRequired && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12, marginTop: 12 }}>
+                    <label className="field">
+                      Installation address
+                      <input
+                        defaultValue={order.installAddress ?? ""}
+                        placeholder="Site address where the sign will be installed"
+                        onBlur={(e) =>
+                          e.target.value !== (order.installAddress ?? "") &&
+                          patchOrder({ installAddress: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Installation charge
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        defaultValue={order.installCharge ?? 0}
+                        onBlur={(e) =>
+                          Number(e.target.value) !== (order.installCharge ?? 0) &&
+                          patchOrder({ installCharge: Number(e.target.value) || 0 })
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            ) : (
+              order.installRequired && (
+                <div className="field" style={{ marginBottom: 16 }}>
+                  Installation
+                  <p className="cell-muted" style={{ fontSize: 13 }}>
+                    {order.installAddress || "No address on file"}
+                    {order.installCharge ? ` · $${order.installCharge.toFixed(2)} install charge` : ""}
+                  </p>
+                </div>
+              )
+            )}
+
             <p className="section-label">Line items ({order.items.length})</p>
             {order.items.map((item, i) => (
               <div className="item-card" key={item.id}>
                 <div className="item-card-header">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="item-card-title">Item {i + 1}</span>
-                    {item.job && <JobStatusBadge status={item.job.status} />}
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className="item-card-title">Item {i + 1}</span>
+                      {item.job && <JobStatusBadge status={item.job.status} />}
+                    </div>
+                    {item.job?.status === "blocked" && (
+                      <p className="cell-muted" style={{ fontSize: 12, marginTop: 4, color: "var(--color-warning)" }}>
+                        {item.job.notes ? `Blocked: ${item.job.notes}` : "Blocked — no reason logged"}
+                      </p>
+                    )}
                   </div>
                   {editable && (
                     <button
@@ -522,18 +625,41 @@ export default function OrderDetailModal({
                 <div className="field item-file-field">
                   Design file
                   <div>
-                    {item.artworkFile ? (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => downloadArtwork(item.artworkFile!.id, item.artworkFile!.fileName, token)}
+                    {item.artworkFile && (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => downloadArtwork(item.artworkFile!.id, item.artworkFile!.fileName, token)}
+                        >
+                          Download {item.artworkFile.fileName}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => toggleFileHistory(item.id)}
+                        >
+                          {historyOpenFor === item.id ? "Hide version history" : "Version history"}
+                        </button>
+                      </div>
+                    )}
+                    {!item.artworkFile && !editable && (
+                      <span className="cell-muted" style={{ fontSize: 13 }}>
+                        No file attached
+                      </span>
+                    )}
+                    {editable && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          marginTop: item.artworkFile ? 8 : 0,
+                        }}
                       >
-                        Download {item.artworkFile.fileName}
-                      </button>
-                    ) : editable ? (
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         <label className="file-input">
-                          {busy ? "Uploading…" : "Choose file…"}
+                          {busy ? "Uploading…" : item.artworkFile ? "Upload new version…" : "Choose file…"}
                           <input
                             type="file"
                             disabled={busy}
@@ -564,10 +690,37 @@ export default function OrderDetailModal({
                           </select>
                         )}
                       </div>
-                    ) : (
-                      <span className="cell-muted" style={{ fontSize: 13 }}>
-                        No file attached
-                      </span>
+                    )}
+                    {historyOpenFor === item.id && (
+                      <div style={{ marginTop: 10 }}>
+                        {!fileHistory[item.id] ? (
+                          <p className="cell-muted" style={{ fontSize: 12.5 }}>
+                            Loading…
+                          </p>
+                        ) : fileHistory[item.id].length === 0 ? (
+                          <p className="cell-muted" style={{ fontSize: 12.5 }}>
+                            No upload history.
+                          </p>
+                        ) : (
+                          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 4 }}>
+                            {fileHistory[item.id].map((v, idx) => (
+                              <li
+                                key={v.id}
+                                className="cell-muted"
+                                style={{ fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}
+                              >
+                                {idx === 0 && (
+                                  <span className="badge badge-order-completed" style={{ fontSize: 10 }}>
+                                    Current
+                                  </span>
+                                )}
+                                {v.fileName} — {v.uploadedBy?.name ?? "Unknown"} —{" "}
+                                {new Date(v.createdAt).toLocaleString()}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

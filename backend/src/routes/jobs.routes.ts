@@ -15,7 +15,10 @@ const JOB_POPULATE = {
   populate: { path: "order", populate: { path: "customer" } },
 };
 
-router.get("/", requireRole("admin", "manager", "production"), async (req, res) => {
+// front_desk gets read-only visibility here (no PATCH access below) — they're
+// the ones fielding "is my sign ready" calls and had no way to answer
+// without walking over to ask production.
+router.get("/", requireRole("admin", "manager", "front_desk", "production"), async (req, res) => {
   const { ProductionJob } = req.models!;
   const filter = req.auth!.role === "production" ? { assignedTo: req.auth!.userId } : {};
   const jobs = await ProductionJob.find(filter)
@@ -27,7 +30,7 @@ router.get("/", requireRole("admin", "manager", "production"), async (req, res) 
 
 // Single-job fetch backs the QR-scan page — same assignment restriction as
 // the list, so scanning someone else's job ticket doesn't leak its details.
-router.get("/:id", requireRole("admin", "manager", "production"), async (req, res) => {
+router.get("/:id", requireRole("admin", "manager", "front_desk", "production"), async (req, res) => {
   const { ProductionJob } = req.models!;
   const job = await ProductionJob.findById(req.params.id);
   if (!job) return res.status(404).json({ error: "Job not found" });

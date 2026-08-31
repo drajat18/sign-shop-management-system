@@ -4,7 +4,7 @@ import { apiFetch } from "../../api/client.js";
 import { estimateMaterialCost } from "../../api/materialCost.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import CameraCaptureModal from "../../components/CameraCaptureModal.js";
-import type { Customer, NewOrderItemInput, OrderItem } from "../../types/index.js";
+import type { Customer, DuplicateOrderSeed, NewOrderItemInput, OrderItem } from "../../types/index.js";
 
 const emptyItem = (): NewOrderItemInput => ({
   signType: "",
@@ -19,20 +19,27 @@ const emptyItem = (): NewOrderItemInput => ({
 export default function NewOrderModal({
   onClose,
   onCreated,
+  duplicateFrom,
 }: {
   onClose: () => void;
   onCreated: () => void;
+  duplicateFrom?: DuplicateOrderSeed;
 }) {
   const { token } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">("existing");
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(duplicateFrom?.customerId ?? "");
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [description, setDescription] = useState("");
-  const [items, setItems] = useState<NewOrderItemInput[]>([emptyItem()]);
+  const [installRequired, setInstallRequired] = useState(false);
+  const [installAddress, setInstallAddress] = useState("");
+  const [installCharge, setInstallCharge] = useState(0);
+  const [items, setItems] = useState<NewOrderItemInput[]>(
+    duplicateFrom ? duplicateFrom.items.map((i) => ({ ...i, file: null })) : [emptyItem()]
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [cameraTargetIndex, setCameraTargetIndex] = useState<number | null>(null);
@@ -73,7 +80,8 @@ export default function NewOrderModal({
     }
   }
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total =
+    items.reduce((sum, item) => sum + item.price * item.quantity, 0) + (installRequired ? installCharge : 0);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -87,8 +95,16 @@ export default function NewOrderModal({
       setError("Enter a customer name");
       return;
     }
+    if (!dueDate) {
+      setError("Due date is required");
+      return;
+    }
     if (items.some((item) => !item.signType.trim() || item.price <= 0)) {
       setError("Every line item needs a sign type and a price greater than 0");
+      return;
+    }
+    if (installRequired && !installAddress.trim()) {
+      setError("Enter the installation address, or uncheck “Needs installation”");
       return;
     }
 
@@ -107,6 +123,9 @@ export default function NewOrderModal({
                 : undefined,
             dueDate: dueDate || undefined,
             description: description || undefined,
+            installRequired,
+            installAddress: installRequired ? installAddress : undefined,
+            installCharge: installRequired ? installCharge : undefined,
             items: items.map(({ file: _file, ...rest }) => rest),
           }),
         }
@@ -203,7 +222,7 @@ export default function NewOrderModal({
               <div style={{ display: "grid", gap: 12 }}>
                 <label className="field">
                   Due date
-                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
                 </label>
                 <label className="field">
                   Order notes
@@ -213,6 +232,36 @@ export default function NewOrderModal({
                     onChange={(e) => setDescription(e.target.value)}
                   />
                 </label>
+                <label className="field field-inline">
+                  <input
+                    type="checkbox"
+                    checked={installRequired}
+                    onChange={(e) => setInstallRequired(e.target.checked)}
+                  />
+                  Needs installation
+                </label>
+                {installRequired && (
+                  <>
+                    <label className="field">
+                      Installation address
+                      <input
+                        placeholder="Site address where the sign will be installed"
+                        value={installAddress}
+                        onChange={(e) => setInstallAddress(e.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      Installation charge
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={installCharge}
+                        onChange={(e) => setInstallCharge(Number(e.target.value) || 0)}
+                      />
+                    </label>
+                  </>
+                )}
               </div>
             </div>
 

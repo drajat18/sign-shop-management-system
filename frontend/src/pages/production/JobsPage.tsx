@@ -19,6 +19,9 @@ export default function JobsPage() {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [ticketJob, setTicketJob] = useState<ProductionJob | null>(null);
   const canReassign = user?.role === "admin" || user?.role === "manager";
+  // front_desk gets this page for visibility only ("is my sign ready?"
+  // calls) — they can't change status, notes, or assignment.
+  const canEditJob = user?.role !== "front_desk";
 
   function loadJobs() {
     apiFetch<ProductionJob[]>("/jobs", { token }).then(setJobs).catch(console.error);
@@ -67,7 +70,9 @@ export default function JobsPage() {
         <div>
           <h1 className="page-title">Production</h1>
           <p className="page-subtitle">
-            {canReassign ? "All jobs, updated live as status changes." : "Jobs assigned to you, updated live."}
+            {user?.role === "production"
+              ? "Jobs assigned to you, updated live."
+              : "All jobs, updated live as status changes."}
           </p>
         </div>
       </div>
@@ -122,17 +127,19 @@ export default function JobsPage() {
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <JobStatusBadge status={job.status} />
-                      <select
-                        value={job.status}
-                        onChange={(e) => updateJob(job.id, { status: e.target.value as JobStatus })}
-                        style={{ fontSize: 12 }}
-                      >
-                        {JOB_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
+                      {canEditJob && (
+                        <select
+                          value={job.status}
+                          onChange={(e) => updateJob(job.id, { status: e.target.value as JobStatus })}
+                          style={{ fontSize: 12 }}
+                        >
+                          {JOB_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </td>
                   {canReassign && (
@@ -151,22 +158,26 @@ export default function JobsPage() {
                     </td>
                   )}
                   <td className="cell-muted">
+                    {!canEditJob ? (
+                      job.notes || "—"
+                    ) : (
                     <input
                       defaultValue={job.notes ?? ""}
-                      placeholder="Add a note…"
+                      placeholder={job.status === "blocked" ? "Why is this blocked?" : "Add a note…"}
                       onBlur={(e) => {
                         if (e.target.value !== (job.notes ?? "")) {
                           updateJob(job.id, { notes: e.target.value });
                         }
                       }}
                       style={{
-                        border: "1px solid transparent",
+                        border: job.status === "blocked" && !job.notes ? "1px solid var(--color-warning)" : "1px solid transparent",
                         background: "transparent",
                         fontSize: 13,
                         width: "100%",
                       }}
                       onFocus={(e) => (e.target.style.border = "1px solid var(--color-border)")}
                     />
+                    )}
                   </td>
                   <td style={{ display: "flex", gap: 8 }}>
                     <button

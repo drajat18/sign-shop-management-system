@@ -7,6 +7,18 @@ const router = Router();
 
 router.use(requireAuth, requireRole("admin", "manager", "front_desk"));
 
+// Every file ever uploaded for this item, newest first — a re-upload no
+// longer erases the record of what came before it (see files.routes.ts),
+// so a proof-revision dispute has an actual answer instead of "we don't
+// know what they approved."
+router.get("/:id/files", async (req, res) => {
+  const { FileRecord } = req.models!;
+  const files = await FileRecord.find({ orderItem: req.params.id })
+    .sort({ createdAt: -1 })
+    .populate("uploadedBy", "name");
+  res.json(files);
+});
+
 router.patch("/:id", async (req, res) => {
   const { OrderItem } = req.models!;
   const item = await OrderItem.findById(req.params.id);

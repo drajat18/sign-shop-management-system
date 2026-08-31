@@ -12,6 +12,10 @@ export const fileRecordSchema = new Schema(
     // per-file display) but are excluded from the quota sum.
     fileSize: { type: Number, default: 0 },
     order: { type: Schema.Types.ObjectId, ref: "Order", required: true },
+    // Which line item this proof/artwork belongs to — lets every upload for
+    // an item stay queryable as version history instead of only the
+    // current one being reachable once OrderItem.artworkFile moves on.
+    orderItem: { type: Schema.Types.ObjectId, ref: "OrderItem" },
     uploadedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
   },
   { timestamps: true }

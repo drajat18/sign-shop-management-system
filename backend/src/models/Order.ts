@@ -16,6 +16,13 @@ export const orderSchema = new Schema(
     status: { type: String, enum: ORDER_STATUSES, default: "new" },
     total: { type: Number, default: 0 },
     paymentStatus: { type: String, enum: ["unpaid", "partial", "paid"], default: "unpaid" },
+    // Installation is optional per order (not every sign gets installed by
+    // the shop — some are picked up), so these only matter when
+    // installRequired is set. installCharge folds into `total` alongside
+    // the line items.
+    installRequired: { type: Boolean, default: false },
+    installAddress: String,
+    installCharge: { type: Number, default: 0 },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     // Lightweight "something needs a look" flag — the actual conversation
     // lives in the OrderMessage collection (a real thread, not a single
