@@ -9,10 +9,12 @@ import { PAGE_ACCESS, ROLE_LANDING_PAGE, canAccess } from "./auth/roles.js";
 import EmployeesPage from "./pages/admin/EmployeesPage.js";
 import ReportsPage from "./pages/admin/ReportsPage.js";
 import SettingsPage from "./pages/admin/SettingsPage.js";
+import DummyAccountingConnectPage from "./pages/accounting/DummyAccountingConnectPage.js";
 import FilesPage from "./pages/files/FilesPage.js";
 import ForgotPassword from "./pages/ForgotPassword.js";
 import InstallsPage from "./pages/front-desk/InstallsPage.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
+import QuotesPage from "./pages/front-desk/QuotesPage.js";
 import InventoryPage from "./pages/inventory/InventoryPage.js";
 import Login from "./pages/Login.js";
 import DummyChargePage from "./pages/payments/DummyChargePage.js";
@@ -49,6 +51,7 @@ export default function App() {
       <Route path="/payments/dummy-charge/:token" element={<DummyChargePage />} />
       <Route path="/payments/result" element={<PaymentResultPage />} />
       <Route path="/storage/dummy-connect/:token" element={<DummyStorageConnectPage />} />
+      <Route path="/accounting/dummy-connect/:token" element={<DummyAccountingConnectPage />} />
     </>
   );
 
@@ -99,6 +102,7 @@ export default function App() {
       />
       <Route element={<AppLayout />}>
         <Route path="/orders" element={guarded(user.role, PAGE_ACCESS.orders, <OrdersPage />, landing)} />
+        <Route path="/quotes" element={guarded(user.role, PAGE_ACCESS.quotes, <QuotesPage />, landing)} />
         <Route path="/installs" element={guarded(user.role, PAGE_ACCESS.installs, <InstallsPage />, landing)} />
         <Route path="/jobs" element={guarded(user.role, PAGE_ACCESS.jobs, <JobsPage />, landing)} />
         <Route path="/files" element={guarded(user.role, PAGE_ACCESS.files, <FilesPage />, landing)} />

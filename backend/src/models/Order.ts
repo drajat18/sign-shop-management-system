@@ -1,6 +1,11 @@
 import { Schema, type InferSchemaType } from "mongoose";
 
+// "quote" is a holding stage, not a real order yet: it skips the due-date
+// requirement, doesn't spawn a production job for its items, and doesn't
+// notify a customer anything is "in production" — see POST /orders and
+// POST /orders/:id/convert-to-order. Every other status is a committed job.
 export const ORDER_STATUSES = [
+  "quote",
   "new",
   "design_approval",
   "in_production",
@@ -34,7 +39,15 @@ export const orderSchema = new Schema(
     installAddress: String,
     installCharge: { type: Number, default: 0 },
     installDate: Date,
+    // Which employee (any role — installers aren't a separate role in this
+    // app) is on the hook for the install. Purely informational; doesn't
+    // gate who can edit the order.
+    installAssignedTo: { type: Schema.Types.ObjectId, ref: "User" },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    // Set once this order's been pushed to (or marked synced with) an
+    // accounting system — see settingsAccounting.routes.ts. Null/undefined
+    // means "never synced," not "synced and failed."
+    accountingSyncedAt: Date,
     // Lightweight "something needs a look" flag — the actual conversation
     // lives in the OrderMessage collection (a real thread, not a single
     // overwritable field). Set whenever the customer approves a design or

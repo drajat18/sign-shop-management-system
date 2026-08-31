@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext.js";
 import type { OrderStatus, ReportsSummary } from "../../types/index.js";
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
+  quote: "Quote",
   new: "New",
   design_approval: "Design/Approval",
   in_production: "In Production",
@@ -12,6 +13,7 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   cancelled: "Cancelled",
 };
 const STATUS_ORDER: OrderStatus[] = [
+  "quote",
   "new",
   "design_approval",
   "in_production",

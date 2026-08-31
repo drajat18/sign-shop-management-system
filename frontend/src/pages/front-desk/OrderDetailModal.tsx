@@ -2,14 +2,20 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client.js";
 import { downloadArtwork, uploadArtwork } from "../../api/files.js";
 import { estimateMaterialCost } from "../../api/materialCost.js";
+import { listMaterialStock } from "../../api/materialStock.js";
 import { listOrderMessages, sendOrderMessage } from "../../api/orderMessages.js";
+import { calculatePriceFromRule, findMatchingRule, listPricingRules } from "../../api/pricingRules.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { usePlan } from "../../auth/PlanContext.js";
 import CameraCaptureModal from "../../components/CameraCaptureModal.js";
 import { JobStatusBadge, OrderStatusBadge } from "../../components/StatusBadge.js";
 import type {
+  AccountingConnectionStatus,
+  AccountingProvider,
+  AssignableUser,
   DuplicateOrderSeed,
   FileVersion,
+  MaterialStock,
   NewOrderItemInput,
   OrderDetail,
   OrderItem,
@@ -19,11 +25,15 @@ import type {
   PaymentConnectionStatus,
   PaymentMethod,
   PaymentOAuthProvider,
+  PricingRule,
   StorageConnectionStatus,
   StorageOAuthProvider,
   StorageProvider,
 } from "../../types/index.js";
 
+// Doesn't include "quote" — a real order never gets moved back to quote
+// through this dropdown; that stage is only reachable at creation, and
+// leaving it is only reachable via the dedicated Convert-to-order action.
 const ORDER_STATUSES: OrderStatus[] = [
   "new",
   "design_approval",
@@ -97,6 +107,15 @@ export default function OrderDetailModal({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [paymentNote, setPaymentNote] = useState("");
   const [recordPaymentBusy, setRecordPaymentBusy] = useState(false);
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
+  const [materialStock, setMaterialStock] = useState<MaterialStock[]>([]);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [convertDueDate, setConvertDueDate] = useState("");
+  const [convertBusy, setConvertBusy] = useState(false);
+  const [accountingStatus, setAccountingStatus] = useState<Record<AccountingProvider, AccountingConnectionStatus> | null>(
+    null
+  );
+  const [syncBusy, setSyncBusy] = useState(false);
 
   async function toggleFileHistory(itemId: string) {
     if (historyOpenFor === itemId) {
@@ -166,8 +185,49 @@ export default function OrderDetailModal({
         setPaymentConnected((Object.keys(status) as PaymentOAuthProvider[]).some((p) => status[p].connected));
       })
       .catch(console.error);
+    apiFetch<Record<AccountingProvider, AccountingConnectionStatus>>("/settings/accounting", { token })
+      .then(setAccountingStatus)
+      .catch(console.error);
+    listPricingRules(token).then(setPricingRules).catch(console.error);
+    listMaterialStock(token).then(setMaterialStock).catch(console.error);
+    apiFetch<AssignableUser[]>("/users/assignable", { token }).then(setAssignableUsers).catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editable, token]);
+
+  async function handleConvertToOrder() {
+    if (!order?.dueDate && !convertDueDate) {
+      setError("A due date is required to convert this quote to an order");
+      return;
+    }
+    setConvertBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/orders/${orderId}/convert-to-order`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ dueDate: convertDueDate || undefined }),
+      });
+      loadOrder();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to convert quote to order");
+    } finally {
+      setConvertBusy(false);
+    }
+  }
+
+  async function handleSyncAccounting() {
+    setSyncBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/orders/${orderId}/sync-accounting`, { method: "POST", token });
+      loadOrder();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sync to accounting");
+    } finally {
+      setSyncBusy(false);
+    }
+  }
 
   async function patchOrder(patch: Record<string, unknown>) {
     await apiFetch(`/orders/${orderId}`, { method: "PATCH", token, body: JSON.stringify(patch) });
@@ -259,6 +319,18 @@ export default function OrderDetailModal({
     }
   }
 
+  function handleCalculatePrice(item: OrderItem) {
+    const rule = findMatchingRule(pricingRules, item.signType);
+    if (!rule) return;
+    const price = calculatePriceFromRule(rule, {
+      quantity: item.quantity,
+      widthIn: item.widthIn,
+      heightIn: item.heightIn,
+      materialCostEstimate: item.materialCostEstimate,
+    });
+    if (price !== null) patchItem(item.id, { price });
+  }
+
   async function handleCopyPortalLink() {
     try {
       const { url } = await apiFetch<{ url: string }>(`/orders/${orderId}/portal-link`, {
@@ -347,6 +419,8 @@ export default function OrderDetailModal({
                         items: order.items.map((item) => ({
                           signType: item.signType,
                           size: item.size ?? "",
+                          widthIn: item.widthIn,
+                          heightIn: item.heightIn,
                           material: item.material ?? "",
                           description: item.description ?? "",
                           quantity: item.quantity,
@@ -381,10 +455,44 @@ export default function OrderDetailModal({
 
             <div className="order-detail-layout">
               <div className="order-detail-main">
+            {order.status === "quote" && (
+              <div
+                className="card"
+                style={{ padding: 16, marginBottom: 16, background: "var(--color-primary-soft)", display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}
+              >
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <p style={{ fontWeight: 600, marginBottom: 2 }}>This is a quote</p>
+                  <p className="cell-muted" style={{ fontSize: 13 }}>
+                    Nothing's been sent to production or to the customer yet. Converting creates the
+                    production job for every item and sends the order-confirmed message.
+                  </p>
+                </div>
+                {editable && (
+                  <>
+                    {!order.dueDate && (
+                      <label className="field" style={{ maxWidth: 160 }}>
+                        Due date
+                        <input type="date" value={convertDueDate} onChange={(e) => setConvertDueDate(e.target.value)} />
+                      </label>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleConvertToOrder}
+                      disabled={convertBusy}
+                    >
+                      {convertBusy ? "Converting…" : "Convert to order"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
               <label className="field">
                 Status
-                {editable ? (
+                {order.status === "quote" ? (
+                  <OrderStatusBadge status={order.status} />
+                ) : editable ? (
                   <select
                     defaultValue={order.status}
                     onChange={(e) => patchOrder({ status: e.target.value })}
@@ -432,6 +540,7 @@ export default function OrderDetailModal({
               </label>
             </div>
 
+            {order.status !== "quote" && (
             <div className="card" style={{ padding: 16, marginBottom: 16, background: "var(--color-neutral-soft)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 12 }}>
                 <span>
@@ -515,6 +624,25 @@ export default function OrderDetailModal({
                 </div>
               )}
             </div>
+            )}
+
+            {order.status !== "quote" && (
+              <div className="card" style={{ padding: 16, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <p style={{ fontWeight: 600, marginBottom: 2, fontSize: 13.5 }}>Accounting</p>
+                  <p className="cell-muted" style={{ fontSize: 13 }}>
+                    {order.accountingSyncedAt
+                      ? `Synced ${new Date(order.accountingSyncedAt).toLocaleString()}`
+                      : "Not synced yet"}
+                  </p>
+                </div>
+                {editable && accountingStatus && Object.values(accountingStatus).some((s) => s.connected) && (
+                  <button type="button" className="btn btn-outline btn-sm" onClick={handleSyncAccounting} disabled={syncBusy}>
+                    {syncBusy ? "Syncing…" : order.accountingSyncedAt ? "Re-sync" : "Sync to accounting"}
+                  </button>
+                )}
+              </div>
+            )}
 
             <label className="field">
               Order notes
@@ -573,6 +701,20 @@ export default function OrderDetailModal({
                         }
                       />
                     </label>
+                    <label className="field" style={{ gridColumn: "1 / -1" }}>
+                      Assigned to
+                      <select
+                        defaultValue={order.installAssignedTo?.id ?? ""}
+                        onChange={(e) => patchOrder({ installAssignedTo: e.target.value || null })}
+                      >
+                        <option value="">Unassigned</option>
+                        {assignableUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
                 )}
               </div>
@@ -584,6 +726,7 @@ export default function OrderDetailModal({
                     {order.installAddress || "No address on file"}
                     {order.installDate ? ` · ${new Date(order.installDate).toLocaleDateString()}` : ""}
                     {order.installCharge ? ` · $${order.installCharge.toFixed(2)} install charge` : ""}
+                    {order.installAssignedTo ? ` · ${order.installAssignedTo.name}` : ""}
                   </p>
                 </div>
               )
@@ -635,12 +778,54 @@ export default function OrderDetailModal({
                         />
                       </label>
                       <label className="field">
+                        Width (in)
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.1"
+                          defaultValue={item.widthIn ?? ""}
+                          onBlur={(e) => {
+                            const value = e.target.value ? Number(e.target.value) : undefined;
+                            if (value !== item.widthIn) patchItem(item.id, { widthIn: value ?? null });
+                          }}
+                        />
+                      </label>
+                      <label className="field">
+                        Height (in)
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.1"
+                          defaultValue={item.heightIn ?? ""}
+                          onBlur={(e) => {
+                            const value = e.target.value ? Number(e.target.value) : undefined;
+                            if (value !== item.heightIn) patchItem(item.id, { heightIn: value ?? null });
+                          }}
+                        />
+                      </label>
+                      <label className="field">
                         Material
                         <input
                           defaultValue={item.material ?? ""}
                           placeholder="Material"
                           onBlur={(e) => e.target.value !== (item.material ?? "") && patchItem(item.id, { material: e.target.value })}
                         />
+                      </label>
+                      <label className="field">
+                        Track against inventory
+                        <select
+                          defaultValue={item.materialStock ?? ""}
+                          onChange={(e) => patchItem(item.id, { materialStock: e.target.value || null })}
+                        >
+                          <option value="">Don't deduct stock</option>
+                          {materialStock
+                            .filter((m) => m.materialName === item.material || m.id === item.materialStock)
+                            .map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.materialName} ({m.quantityOnHand} {m.unit} on hand)
+                              </option>
+                            ))}
+                        </select>
                       </label>
                     </div>
                     <div className="item-grid-secondary">
@@ -698,6 +883,15 @@ export default function OrderDetailModal({
                 <div className="field item-file-field">
                   Material cost estimate
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    {editable && findMatchingRule(pricingRules, item.signType) && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => handleCalculatePrice(item)}
+                      >
+                        Calculate price
+                      </button>
+                    )}
                     {editable && (
                       <button
                         type="button"
@@ -871,6 +1065,26 @@ export default function OrderDetailModal({
                     />
                   </label>
                   <label className="field">
+                    Width (in)
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={newItem.widthIn ?? ""}
+                      onChange={(e) => setNewItem({ ...newItem, widthIn: e.target.value ? Number(e.target.value) : undefined })}
+                    />
+                  </label>
+                  <label className="field">
+                    Height (in)
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={newItem.heightIn ?? ""}
+                      onChange={(e) => setNewItem({ ...newItem, heightIn: e.target.value ? Number(e.target.value) : undefined })}
+                    />
+                  </label>
+                  <label className="field">
                     Material
                     <input
                       placeholder="Aluminum"
@@ -878,6 +1092,24 @@ export default function OrderDetailModal({
                       onChange={(e) => setNewItem({ ...newItem, material: e.target.value })}
                     />
                   </label>
+                  {materialStock.some((m) => m.materialName === newItem.material) && (
+                    <label className="field">
+                      Track against inventory
+                      <select
+                        value={newItem.materialStock ?? ""}
+                        onChange={(e) => setNewItem({ ...newItem, materialStock: e.target.value || undefined })}
+                      >
+                        <option value="">Don't deduct stock</option>
+                        {materialStock
+                          .filter((m) => m.materialName === newItem.material)
+                          .map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.materialName} ({m.quantityOnHand} {m.unit} on hand)
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  )}
                 </div>
 
                 <div className="item-grid-secondary">

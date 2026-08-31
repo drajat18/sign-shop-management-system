@@ -11,6 +11,7 @@ import type { MaterialStock } from "../../types/index.js";
 const emptyForm = {
   materialName: "",
   unit: "sqft",
+  isAreaBased: false,
   quantityOnHand: 0,
   reorderThreshold: 0,
   vendorName: "",
@@ -77,7 +78,8 @@ export default function InventoryPage() {
         <div>
           <h1 className="page-title">Inventory</h1>
           <p className="page-subtitle">
-            How much of each material you have on hand — tracked manually, not tied to specific orders.
+            How much of each material you have on hand — link an order item to a material here to
+            deduct stock automatically.
           </p>
         </div>
         {canManage && (
@@ -151,15 +153,25 @@ export default function InventoryPage() {
               />
             </label>
           </div>
-          <label className="field" style={{ maxWidth: 220 }}>
-            Lead time (days)
-            <input
-              type="number"
-              min={0}
-              value={form.leadTimeDays}
-              onChange={(e) => setForm({ ...form, leadTimeDays: Number(e.target.value) || 0 })}
-            />
-          </label>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
+            <label className="field" style={{ maxWidth: 220 }}>
+              Lead time (days)
+              <input
+                type="number"
+                min={0}
+                value={form.leadTimeDays}
+                onChange={(e) => setForm({ ...form, leadTimeDays: Number(e.target.value) || 0 })}
+              />
+            </label>
+            <label className="field field-inline" style={{ marginBottom: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.isAreaBased}
+                onChange={(e) => setForm({ ...form, isAreaBased: e.target.checked })}
+              />
+              Consumed by square footage, not per item
+            </label>
+          </div>
           <div className="modal-actions">
             <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAdd(false)}>
               Cancel
@@ -189,6 +201,7 @@ export default function InventoryPage() {
               <tr>
                 <th>Material</th>
                 <th>Unit</th>
+                <th>By sqft</th>
                 <th>On hand</th>
                 <th>Reorder at</th>
                 <th>Vendor</th>
@@ -203,6 +216,19 @@ export default function InventoryPage() {
                   <tr key={item.id} style={low ? { background: "var(--color-warning-soft)" } : undefined}>
                     <td className="cell-primary">{item.materialName}</td>
                     <td className="cell-muted">{item.unit}</td>
+                    <td>
+                      {canManage ? (
+                        <input
+                          type="checkbox"
+                          checked={item.isAreaBased ?? false}
+                          onChange={(e) => handleUpdate(item.id, { isAreaBased: e.target.checked })}
+                        />
+                      ) : item.isAreaBased ? (
+                        "Yes"
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>
                       {canManage ? (
                         <input

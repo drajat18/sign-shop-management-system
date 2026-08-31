@@ -11,6 +11,7 @@ import { isAllowedOrigin } from "./config/corsOrigin.js";
 import { connectDB, getMongoUri } from "./config/db.js";
 import { initSockets } from "./sockets/index.js";
 
+import accountingDummyRoutes from "./routes/accountingDummy.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import billingDummyRoutes from "./routes/billingDummy.routes.js";
 import customersRoutes from "./routes/customers.routes.js";
@@ -29,7 +30,9 @@ import platformAuthRoutes from "./routes/platform/auth.routes.js";
 import platformShopsRoutes from "./routes/platform/shops.routes.js";
 import platformTeamRoutes from "./routes/platform/team.routes.js";
 import portalRoutes from "./routes/portal.routes.js";
+import pricingRulesRoutes from "./routes/pricingRules.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
+import settingsAccountingRoutes from "./routes/settingsAccounting.routes.js";
 import settingsBillingRoutes from "./routes/settingsBilling.routes.js";
 import settingsPaymentsRoutes from "./routes/settingsPayments.routes.js";
 import settingsStorageRoutes from "./routes/settingsStorage.routes.js";
@@ -91,6 +94,9 @@ app.use("/api/payment-oauth", paymentOAuthCallbackRoutes);
 app.use("/api/payments", paymentsDummyRoutes);
 app.use("/api/payment-return", paymentReturnRoutes);
 app.use("/api/shop/plan", shopPlanRoutes);
+app.use("/api/settings/accounting", settingsAccountingRoutes);
+app.use("/api/accounting-dummy", accountingDummyRoutes);
+app.use("/api/pricing-rules", pricingRulesRoutes);
 
 // Catches errors forwarded by express-async-errors (and anything passed to
 // next(err) directly) so a failed request returns a normal 500 instead of

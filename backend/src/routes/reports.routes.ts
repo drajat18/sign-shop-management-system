@@ -23,7 +23,10 @@ router.get("/summary", async (req, res) => {
 
   const orders = await Order.find(rangeFilter);
   const cancelled = orders.filter((o) => o.status === "cancelled");
-  const active = orders.filter((o) => o.status !== "cancelled");
+  // A quote isn't revenue, isn't overdue, and isn't a real production
+  // job yet — it's excluded here the same way cancelled orders are, not
+  // counted as a loss, just not counted as the business.
+  const active = orders.filter((o) => o.status !== "cancelled" && o.status !== "quote");
 
   const totalOrders = active.length;
   const totalOrderValue = active.reduce((sum, o) => sum + o.total, 0);

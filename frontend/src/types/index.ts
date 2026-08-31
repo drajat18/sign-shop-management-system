@@ -1,6 +1,7 @@
 export type Role = "admin" | "manager" | "front_desk" | "production";
 
 export type OrderStatus =
+  | "quote"
   | "new"
   | "design_approval"
   | "in_production"
@@ -47,6 +48,8 @@ export interface Order {
   installAddress?: string;
   installCharge?: number;
   installDate?: string;
+  installAssignedTo?: { id: string; name: string } | null;
+  accountingSyncedAt?: string;
 }
 
 export type PaymentMethod = "cash" | "card_in_person" | "check" | "online" | "other";
@@ -124,7 +127,11 @@ export interface OrderItem {
   id: string;
   signType: string;
   size?: string;
+  widthIn?: number;
+  heightIn?: number;
   material?: string;
+  materialStock?: string | null;
+  materialConsumedQty?: number;
   description?: string;
   quantity: number;
   price: number;
@@ -151,7 +158,10 @@ export interface DuplicateOrderSeed {
 export interface NewOrderItemInput {
   signType: string;
   size?: string;
+  widthIn?: number;
+  heightIn?: number;
   material?: string;
+  materialStock?: string;
   description?: string;
   quantity: number;
   price: number;
@@ -257,6 +267,7 @@ export interface MaterialStock {
   id: string;
   materialName: string;
   unit: string;
+  isAreaBased?: boolean;
   quantityOnHand: number;
   reorderThreshold: number;
   notes?: string;
@@ -265,6 +276,34 @@ export interface MaterialStock {
   leadTimeDays?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export const PRICING_METHODS = ["flat", "per_sqft", "cost_plus"] as const;
+export type PricingMethod = (typeof PRICING_METHODS)[number];
+
+export interface PricingRule {
+  id: string;
+  signType: string;
+  method: PricingMethod;
+  flatPrice?: number;
+  pricePerSqft?: number;
+  costPlusMarginPercent?: number;
+  minPrice?: number;
+}
+
+export type AccountingProvider = "quickbooks";
+
+export interface AccountingConnectionStatus {
+  configured: boolean;
+  connected: boolean;
+  accountLabel?: string;
+  connectedAt?: string;
+}
+
+export interface AssignableUser {
+  id: string;
+  name: string;
+  role: Role;
 }
 
 export interface Shop {

@@ -352,6 +352,11 @@ textarea {
   color: var(--color-text-muted);
 }
 
+.badge-order-quote {
+  background: #fff7d6;
+  color: #92700c;
+}
+
 .badge-order-design_approval {
   background: var(--color-info-soft);
   color: var(--color-info);

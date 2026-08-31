@@ -2,15 +2,23 @@ import { useEffect, useState, type FormEvent } from "react";
 import { uploadArtwork } from "../../api/files.js";
 import { apiFetch } from "../../api/client.js";
 import { estimateMaterialCost } from "../../api/materialCost.js";
+import { listMaterialStock } from "../../api/materialStock.js";
+import { calculatePriceFromRule, findMatchingRule, listPricingRules } from "../../api/pricingRules.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import CameraCaptureModal from "../../components/CameraCaptureModal.js";
-import type { Customer, DuplicateOrderSeed, NewOrderItemInput, OrderItem } from "../../types/index.js";
+import type {
+  Customer,
+  DuplicateOrderSeed,
+  MaterialStock,
+  NewOrderItemInput,
+  OrderItem,
+  PricingRule,
+} from "../../types/index.js";
 
 const emptyItem = (): NewOrderItemInput => ({
   signType: "",
   size: "",
   material: "",
-  description: "",
   quantity: 1,
   price: 0,
   file: null,
@@ -20,10 +28,12 @@ export default function NewOrderModal({
   onClose,
   onCreated,
   duplicateFrom,
+  isQuote,
 }: {
   onClose: () => void;
   onCreated: () => void;
   duplicateFrom?: DuplicateOrderSeed;
+  isQuote?: boolean;
 }) {
   const { token } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -45,6 +55,8 @@ export default function NewOrderModal({
   const [submitting, setSubmitting] = useState(false);
   const [cameraTargetIndex, setCameraTargetIndex] = useState<number | null>(null);
   const [materialCostBusy, setMaterialCostBusy] = useState<number | null>(null);
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
+  const [materialStock, setMaterialStock] = useState<MaterialStock[]>([]);
 
   useEffect(() => {
     apiFetch<Customer[]>("/customers", { token })
@@ -53,6 +65,8 @@ export default function NewOrderModal({
         if (list.length === 0) setCustomerMode("new");
       })
       .catch(console.error);
+    listPricingRules(token).then(setPricingRules).catch(console.error);
+    listMaterialStock(token).then(setMaterialStock).catch(console.error);
   }, [token]);
 
   function updateItem(index: number, patch: Partial<NewOrderItemInput>) {
@@ -81,6 +95,19 @@ export default function NewOrderModal({
     }
   }
 
+  function handleCalculatePrice(index: number) {
+    const item = items[index];
+    const rule = findMatchingRule(pricingRules, item.signType);
+    if (!rule) return;
+    const price = calculatePriceFromRule(rule, {
+      quantity: item.quantity,
+      widthIn: item.widthIn,
+      heightIn: item.heightIn,
+      materialCostEstimate: item.materialCostEstimate,
+    });
+    if (price !== null) updateItem(index, { price });
+  }
+
   const total =
     items.reduce((sum, item) => sum + item.price * item.quantity, 0) + (installRequired ? installCharge : 0);
 
@@ -96,7 +123,7 @@ export default function NewOrderModal({
       setError("Enter a customer name");
       return;
     }
-    if (!dueDate) {
+    if (!isQuote && !dueDate) {
       setError("Due date is required");
       return;
     }
@@ -128,6 +155,7 @@ export default function NewOrderModal({
             installAddress: installRequired ? installAddress : undefined,
             installDate: installRequired ? installDate || undefined : undefined,
             installCharge: installRequired ? installCharge : undefined,
+            isQuote: Boolean(isQuote),
             items: items.map(({ file: _file, ...rest }) => rest),
           }),
         }
@@ -142,7 +170,7 @@ export default function NewOrderModal({
 
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create order");
+      setError(err instanceof Error ? err.message : `Failed to create ${isQuote ? "quote" : "order"}`);
     } finally {
       setSubmitting(false);
     }
@@ -153,9 +181,11 @@ export default function NewOrderModal({
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700 }}>New order</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>{isQuote ? "New quote" : "New order"}</h2>
             <p className="cell-muted" style={{ fontSize: 13, marginTop: 4 }}>
-              Placing this order creates a queued production job for every line item.
+              {isQuote
+                ? "Nothing here reaches the shop floor or the customer until this quote is converted to an order."
+                : "Placing this order creates a queued production job for every line item."}
             </p>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
@@ -220,14 +250,19 @@ export default function NewOrderModal({
                 </div>
               )}
 
-              <p className="section-label">Order details</p>
+              <p className="section-label">{isQuote ? "Quote details" : "Order details"}</p>
               <div style={{ display: "grid", gap: 12 }}>
                 <label className="field">
-                  Due date
-                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+                  Due date{isQuote ? " (optional)" : ""}
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    required={!isQuote}
+                  />
                 </label>
                 <label className="field">
-                  Order notes
+                  {isQuote ? "Quote notes" : "Order notes"}
                   <input
                     placeholder="Special instructions for the whole order…"
                     value={description}
@@ -301,11 +336,23 @@ export default function NewOrderModal({
                   />
                 </label>
                 <label className="field">
-                  Size
+                  Width (in)
                   <input
-                    placeholder='24"x36"'
-                    value={item.size}
-                    onChange={(e) => updateItem(i, { size: e.target.value })}
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={item.widthIn ?? ""}
+                    onChange={(e) => updateItem(i, { widthIn: e.target.value ? Number(e.target.value) : undefined })}
+                  />
+                </label>
+                <label className="field">
+                  Height (in)
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={item.heightIn ?? ""}
+                    onChange={(e) => updateItem(i, { heightIn: e.target.value ? Number(e.target.value) : undefined })}
                   />
                 </label>
                 <label className="field">
@@ -314,8 +361,32 @@ export default function NewOrderModal({
                     placeholder="Aluminum"
                     value={item.material}
                     onChange={(e) => updateItem(i, { material: e.target.value })}
+                    list={`material-options-${i}`}
                   />
+                  <datalist id={`material-options-${i}`}>
+                    {materialStock.map((m) => (
+                      <option key={m.id} value={m.materialName} />
+                    ))}
+                  </datalist>
                 </label>
+                {materialStock.some((m) => m.materialName === item.material) && (
+                  <label className="field">
+                    Track against inventory
+                    <select
+                      value={item.materialStock ?? ""}
+                      onChange={(e) => updateItem(i, { materialStock: e.target.value || undefined })}
+                    >
+                      <option value="">Don't deduct stock</option>
+                      {materialStock
+                        .filter((m) => m.materialName === item.material)
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.materialName} ({m.quantityOnHand} {m.unit} on hand)
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
                 <label className="field">
                   Quantity
                   <input
@@ -338,15 +409,24 @@ export default function NewOrderModal({
               </div>
 
               <div className="field item-file-field">
-                Material cost estimate
+                Pricing
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {findMatchingRule(pricingRules, item.signType) && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleCalculatePrice(i)}
+                    >
+                      Calculate price
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
                     onClick={() => handleCheckPricing(i)}
                     disabled={!item.material?.trim() || materialCostBusy === i}
                   >
-                    {materialCostBusy === i ? "Checking…" : "Check pricing"}
+                    {materialCostBusy === i ? "Checking…" : "Check material cost"}
                   </button>
                   {item.materialCostEstimate !== undefined && (
                     <span className="cell-muted" style={{ fontSize: 13 }}>
@@ -413,7 +493,7 @@ export default function NewOrderModal({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? "Creating…" : "Create order"}
+              {submitting ? "Creating…" : isQuote ? "Create quote" : "Create order"}
             </button>
           </div>
         </form>

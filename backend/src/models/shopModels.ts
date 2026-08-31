@@ -1,4 +1,5 @@
 import type { Connection, Model } from "mongoose";
+import { accountingConnectionSchema, type AccountingConnection } from "./AccountingConnection.js";
 import { auditLogSchema, type AuditLog } from "./AuditLog.js";
 import { customerSchema, type Customer } from "./Customer.js";
 import { customerPortalTokenSchema, type CustomerPortalToken } from "./CustomerPortalToken.js";
@@ -11,6 +12,7 @@ import { materialStockSchema, type MaterialStock } from "./MaterialStock.js";
 import { passwordResetTokenSchema, type PasswordResetToken } from "./PasswordResetToken.js";
 import { paymentConnectionSchema, type PaymentConnection } from "./PaymentConnection.js";
 import { paymentSchema, type Payment } from "./Payment.js";
+import { pricingRuleSchema, type PricingRule } from "./PricingRule.js";
 import { productionJobSchema, type ProductionJob } from "./ProductionJob.js";
 import { statusLogSchema, type StatusLog } from "./StatusLog.js";
 import { storageConnectionSchema, type StorageConnection } from "./StorageConnection.js";
@@ -33,6 +35,8 @@ export interface ShopModels {
   Payment: Model<Payment>;
   NotificationLog: Model<NotificationLog>;
   MaterialStock: Model<MaterialStock>;
+  PricingRule: Model<PricingRule>;
+  AccountingConnection: Model<AccountingConnection>;
 }
 
 const registry = new WeakMap<Connection, ShopModels>();
@@ -73,6 +77,11 @@ export function getShopModels(connection: Connection): ShopModels {
     Payment: connection.model<Payment>("Payment", paymentSchema),
     NotificationLog: connection.model<NotificationLog>("NotificationLog", notificationLogSchema),
     MaterialStock: connection.model<MaterialStock>("MaterialStock", materialStockSchema),
+    PricingRule: connection.model<PricingRule>("PricingRule", pricingRuleSchema),
+    AccountingConnection: connection.model<AccountingConnection>(
+      "AccountingConnection",
+      accountingConnectionSchema
+    ),
   };
   registry.set(connection, models);
   return models;

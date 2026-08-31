@@ -18,6 +18,14 @@ router.get("/production", requireRole("admin", "manager"), async (req, res) => {
   res.json(users);
 });
 
+// Every active employee, name only — installers aren't a separate role in
+// this app, so assigning an install to "whoever's doing it" means picking
+// from the whole staff list, not just production.
+router.get("/assignable", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const users = await req.models!.User.find({ active: true }).select("name role").sort({ name: 1 });
+  res.json(users);
+});
+
 // Admin only from here down: manage employees, deactivate to instantly revoke access.
 router.use(requireRole("admin"));
 

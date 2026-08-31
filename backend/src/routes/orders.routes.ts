@@ -7,6 +7,7 @@ import { requireRole } from "../middleware/requireRole.js";
 import type { Customer } from "../models/Customer.js";
 import { PAYMENT_METHODS } from "../models/Payment.js";
 import { getStripe } from "../services/billing/stripe.js";
+import { consumeMaterialForItem, restockMaterialForItem } from "../services/materialConsumption.js";
 import { notifyCustomer } from "../services/notifications.js";
 import { recomputeOrderPayments, recomputeOrderTotal } from "../services/orderTotals.js";
 import { createPaypalOrder } from "../services/payments/paypalPayments.js";
@@ -25,7 +26,10 @@ const PORTAL_LINK_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 interface NewOrderItem {
   signType: string;
   size?: string;
+  widthIn?: number;
+  heightIn?: number;
   material?: string;
+  materialStock?: string;
   description?: string;
   quantity?: number;
   price: number;
@@ -59,8 +63,12 @@ router.get("/", requireRole("admin", "manager", "front_desk", "production"), asy
     limit = "25",
   } = req.query as Record<string, string | undefined>;
 
-  const filter: Record<string, unknown> = {};
-  if (status) filter.status = status;
+  // A quote isn't a real order yet (see ORDER_STATUSES in models/Order.ts) —
+  // it stays out of this list by default so it doesn't clutter production
+  // order volume, exactly like the Quotes page stays out of Orders. Explicitly
+  // filtering status=quote (from the Quotes page) is the only way to see them
+  // here.
+  const filter: Record<string, unknown> = status ? { status } : { status: { $ne: "quote" } };
   if (paymentStatus) filter.paymentStatus = paymentStatus;
   if (installRequired === "true") filter.installRequired = true;
   if (search?.trim()) {
@@ -78,6 +86,7 @@ router.get("/", requireRole("admin", "manager", "front_desk", "production"), asy
   const [orders, total] = await Promise.all([
     Order.find(filter)
       .populate("customer")
+      .populate("installAssignedTo", "name")
       .sort({ [sortField]: sortOrder })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum),
@@ -115,8 +124,7 @@ router.get("/export", requireRole("admin", "manager", "front_desk"), async (req,
   const { Order, Customer } = req.models!;
   const { search, status, paymentStatus, from, to } = req.query as Record<string, string | undefined>;
 
-  const filter: Record<string, unknown> = {};
-  if (status) filter.status = status;
+  const filter: Record<string, unknown> = status ? { status } : { status: { $ne: "quote" } };
   if (paymentStatus) filter.paymentStatus = paymentStatus;
   if (from || to) {
     const createdAt: Record<string, Date> = {};
@@ -179,7 +187,9 @@ router.get("/export", requireRole("admin", "manager", "front_desk"), async (req,
 // order" link from the Production page as well as the Orders list.
 router.get("/:id", requireRole("admin", "manager", "front_desk", "production"), async (req, res) => {
   const { Order, OrderItem, ProductionJob } = req.models!;
-  const order = await Order.findById(req.params.id).populate("customer");
+  const order = await Order.findById(req.params.id)
+    .populate("customer")
+    .populate("installAssignedTo", "name");
   if (!order) return res.status(404).json({ error: "Order not found" });
 
   const items = await OrderItem.find({ order: order._id }).populate("artworkFile");
@@ -195,9 +205,13 @@ router.get("/:id", requireRole("admin", "manager", "front_desk", "production"), 
   });
 });
 
-// Creates the order, its line items, and one queued production job per
-// item in a single call — that's what makes a placed order actually show
-// up on the Production page instead of orders and jobs living in silos.
+// Creates either a real order or a quote. A quote skips everything a
+// customer or the shop floor shouldn't see yet — no due date requirement,
+// no production job, no "your order is confirmed" notification — so
+// pricing something for someone who hasn't committed doesn't accidentally
+// promise them a job that's already in the queue. A real order still
+// creates one queued production job per item in the same call, exactly as
+// before.
 router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Customer, Order, OrderItem, ProductionJob } = req.models!;
   const {
@@ -209,6 +223,7 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     installAddress,
     installCharge,
     installDate,
+    isQuote,
     items,
   } = req.body as {
     customerId?: string;
@@ -219,13 +234,14 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     installAddress?: string;
     installCharge?: number;
     installDate?: string;
+    isQuote?: boolean;
     items: NewOrderItem[];
   };
 
   if (!customerId && !newCustomer?.name) {
     return res.status(400).json({ error: "customerId or newCustomer.name is required" });
   }
-  if (!dueDate) {
+  if (!isQuote && !dueDate) {
     return res.status(400).json({ error: "Due date is required" });
   }
   if (!items?.length) {
@@ -251,7 +267,8 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
 
   const order = await Order.create({
     customer: customer._id,
-    dueDate,
+    status: isQuote ? "quote" : "new",
+    dueDate: isQuote ? undefined : dueDate,
     description,
     installRequired: Boolean(installRequired),
     installAddress: installRequired ? installAddress : undefined,
@@ -266,7 +283,10 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
       order: order._id,
       signType: item.signType,
       size: item.size,
+      widthIn: item.widthIn,
+      heightIn: item.heightIn,
       material: item.material,
+      materialStock: item.materialStock,
       description: item.description,
       quantity: item.quantity ?? 1,
       price: item.price,
@@ -275,9 +295,22 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     }))
   );
 
-  const jobs = await ProductionJob.insertMany(
-    orderItems.map((item) => ({ orderItem: item._id, status: "queued" }))
-  );
+  // A quote doesn't consume real stock or queue real production — only a
+  // committed order does. Both happen together at conversion time (see
+  // POST /:id/convert-to-order) for anything created as a quote.
+  let jobs: Awaited<ReturnType<typeof ProductionJob.insertMany>> = [];
+  if (!isQuote) {
+    for (const item of orderItems) {
+      const consumedQty = await consumeMaterialForItem(req.models!, item);
+      if (consumedQty > 0) {
+        item.materialConsumedQty = consumedQty;
+        await item.save();
+      }
+    }
+    jobs = await ProductionJob.insertMany(
+      orderItems.map((item) => ({ orderItem: item._id, status: "queued" }))
+    );
+  }
 
   const shopId = req.auth!.shopId;
   const populatedOrder = { ...order.toJSON(), customer: customer.toJSON(), itemsCount: orderItems.length };
@@ -286,16 +319,66 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     emitToShop(shopId, EVENTS.JOB_CREATED, job.toJSON());
   }
 
-  const itemCount = orderItems.length;
-  void notifyCustomer(req.models!, shopId, order, customer, {
+  if (!isQuote) {
+    const itemCount = orderItems.length;
+    void notifyCustomer(req.models!, shopId, order, customer, {
+      subject: "Order confirmed",
+      text: `Hi! We've received your order — ${itemCount} item${itemCount === 1 ? "" : "s"}, total $${total.toFixed(2)}.${
+        dueDate ? ` Expected by ${new Date(dueDate).toLocaleDateString()}.` : ""
+      } We'll keep you updated as it moves through production.`,
+      trigger: "order_created",
+    });
+  }
+
+  res.status(201).json({ order: populatedOrder, items: orderItems, jobs });
+});
+
+// Turns a quote into a real order: requires a due date (supplied here if the
+// quote never had one), creates the production job for every existing item,
+// consumes their linked material stock, and sends the same "order confirmed"
+// notification a normal order creation would — all the things a quote
+// deliberately skipped.
+router.post("/:id/convert-to-order", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, OrderItem, ProductionJob } = req.models!;
+  const order = await Order.findById(req.params.id).populate("customer");
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (order.status !== "quote") {
+    return res.status(400).json({ error: "Only a quote can be converted to an order" });
+  }
+
+  const { dueDate } = req.body as { dueDate?: string };
+  const resolvedDueDate = dueDate ? new Date(dueDate) : order.dueDate;
+  if (!resolvedDueDate) {
+    return res.status(400).json({ error: "Due date is required to convert a quote to an order" });
+  }
+
+  order.status = "new";
+  order.dueDate = resolvedDueDate;
+  await order.save();
+
+  const items = await OrderItem.find({ order: order._id });
+  for (const item of items) {
+    const consumedQty = await consumeMaterialForItem(req.models!, item);
+    if (consumedQty > 0) {
+      item.materialConsumedQty = consumedQty;
+      await item.save();
+    }
+  }
+  const jobs = await ProductionJob.insertMany(items.map((item) => ({ orderItem: item._id, status: "queued" })));
+
+  const shopId = req.auth!.shopId;
+  emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
+  for (const job of jobs) {
+    emitToShop(shopId, EVENTS.JOB_CREATED, job.toJSON());
+  }
+
+  void notifyCustomer(req.models!, shopId, order, order.customer as unknown as CustomerDoc, {
     subject: "Order confirmed",
-    text: `Hi! We've received your order — ${itemCount} item${itemCount === 1 ? "" : "s"}, total $${total.toFixed(2)}.${
-      dueDate ? ` Expected by ${new Date(dueDate).toLocaleDateString()}.` : ""
-    } We'll keep you updated as it moves through production.`,
+    text: `Hi! We've received your order — ${items.length} item${items.length === 1 ? "" : "s"}, total $${order.total.toFixed(2)}. Expected by ${new Date(resolvedDueDate).toLocaleDateString()}. We'll keep you updated as it moves through production.`,
     trigger: "order_created",
   });
 
-  res.status(201).json({ order: populatedOrder, items: orderItems, jobs });
+  res.json({ order, items, jobs });
 });
 
 // Adds one more line item to an order that's already been placed, with its
@@ -305,8 +388,19 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
   const order = await Order.findById(req.params.id).populate("customer");
   if (!order) return res.status(404).json({ error: "Order not found" });
 
-  const { signType, size, material, description, quantity, price, materialCostEstimate, materialCostVendor } =
-    req.body as NewOrderItem;
+  const {
+    signType,
+    size,
+    widthIn,
+    heightIn,
+    material,
+    materialStock,
+    description,
+    quantity,
+    price,
+    materialCostEstimate,
+    materialCostVendor,
+  } = req.body as NewOrderItem;
   if (!signType || typeof price !== "number") {
     return res.status(400).json({ error: "signType and a numeric price are required" });
   }
@@ -315,17 +409,30 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
     order: order._id,
     signType,
     size,
+    widthIn,
+    heightIn,
     material,
+    materialStock,
     description,
     quantity: quantity ?? 1,
     price,
     materialCostEstimate,
     materialCostVendor,
   });
-  const job = await ProductionJob.create({ orderItem: item._id, status: "queued" });
-  await recomputeOrderTotal(req.models!, order.id);
 
-  emitToShop(req.auth!.shopId, EVENTS.JOB_CREATED, job.toJSON());
+  // A quote isn't a committed job yet, so adding an item to one doesn't
+  // touch real stock or queue real production — see POST /:id/convert-to-order.
+  let job = null;
+  if (order.status !== "quote") {
+    const consumedQty = await consumeMaterialForItem(req.models!, item);
+    if (consumedQty > 0) {
+      item.materialConsumedQty = consumedQty;
+      await item.save();
+    }
+    job = await ProductionJob.create({ orderItem: item._id, status: "queued" });
+    emitToShop(req.auth!.shopId, EVENTS.JOB_CREATED, job.toJSON());
+  }
+  await recomputeOrderTotal(req.models!, order.id);
 
   // recomputeOrderTotal writes straight to the DB rather than mutating
   // `order`, so the item count + total here need a fresh read to reflect
@@ -334,19 +441,21 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
     OrderItem.countDocuments({ order: order._id }),
     Order.findById(order._id),
   ]);
-  void notifyCustomer(
-    req.models!,
-    req.auth!.shopId,
-    order,
-    order.customer as unknown as CustomerDoc,
-    {
-      subject: "A new item was added to your order",
-      text: `Hi! We've added "${signType}" to your order. It now has ${itemCount} item${
-        itemCount === 1 ? "" : "s"
-      }, total $${(updatedOrder?.total ?? 0).toFixed(2)}.`,
-      trigger: "order_item_added",
-    }
-  );
+  if (order.status !== "quote") {
+    void notifyCustomer(
+      req.models!,
+      req.auth!.shopId,
+      order,
+      order.customer as unknown as CustomerDoc,
+      {
+        subject: "A new item was added to your order",
+        text: `Hi! We've added "${signType}" to your order. It now has ${itemCount} item${
+          itemCount === 1 ? "" : "s"
+        }, total $${(updatedOrder?.total ?? 0).toFixed(2)}.`,
+        trigger: "order_item_added",
+      }
+    );
+  }
 
   res.status(201).json({ item, job });
 });
@@ -424,6 +533,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
     installAddress,
     installCharge,
     installDate,
+    installAssignedTo,
   } = req.body as {
     status?: string;
     dueDate?: string;
@@ -433,6 +543,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
     installAddress?: string;
     installCharge?: number;
     installDate?: string | null;
+    installAssignedTo?: string | null;
   };
 
   if (installRequired && !(installAddress ?? existing.installAddress)?.trim()) {
@@ -456,6 +567,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
         installAddress: installRequired === false ? "" : installAddress,
         installCharge,
         installDate: installRequired === false ? null : installDate,
+        installAssignedTo,
       }).filter(([, v]) => v !== undefined)
     )
   );
@@ -466,6 +578,18 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
     existing.total = itemsTotal + (existing.installRequired ? existing.installCharge ?? 0 : 0);
   }
   await existing.save();
+
+  // Cancelling a committed order returns whatever material stock it
+  // consumed — a quote never consumed anything, so cancelling one is a
+  // no-op here. Guarded on the transition itself so re-saving an
+  // already-cancelled order (e.g. editing its notes) never double-restocks.
+  if (status === "cancelled" && previousStatus !== "cancelled") {
+    const { OrderItem } = req.models!;
+    const items = await OrderItem.find({ order: existing._id, materialConsumedQty: { $gt: 0 } });
+    for (const item of items) {
+      await restockMaterialForItem(req.models!, item);
+    }
+  }
 
   if (status && status !== previousStatus) {
     await StatusLog.create({
@@ -480,6 +604,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   // their order list state (see OrdersPage's socket handler), so an
   // unpopulated customer ref would blank out the customer name there.
   await existing.populate("customer");
+  await existing.populate("installAssignedTo", "name");
   // Emitted unconditionally (not just on status change) so other open tabs —
   // notably the Production page, which shows a customer-response badge —
   // pick up edits like a staff member dismissing that badge.
@@ -720,6 +845,30 @@ router.post("/:id/payments", requireRole("admin", "manager", "front_desk"), asyn
   emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, updatedOrder);
 
   res.status(201).json(payment);
+});
+
+// Marks this order as pushed to the shop's connected accounting system.
+// With no real QuickBooks API integration wired up yet (see
+// quickbooksOAuth.ts), this only writes the sync marker — the same
+// structural shape a real push would leave behind, so a shop can already
+// see which orders are and aren't synced today, and the real API call
+// slots in here later without changing anything else.
+router.post("/:id/sync-accounting", requireRole("admin", "manager"), async (req, res) => {
+  const { Order, AccountingConnection } = req.models!;
+  const connection = await AccountingConnection.findOne();
+  if (!connection) {
+    return res.status(400).json({ error: "Connect an accounting provider in Settings first." });
+  }
+
+  const order = await Order.findByIdAndUpdate(
+    req.params.id,
+    { accountingSyncedAt: new Date() },
+    { new: true }
+  ).populate("customer");
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, order);
+  res.json(order);
 });
 
 export default router;

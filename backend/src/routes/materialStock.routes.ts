@@ -13,17 +13,27 @@ router.get("/", requireRole("admin", "manager", "front_desk"), async (req, res) 
 });
 
 router.post("/", requireRole("admin", "manager"), async (req, res) => {
-  const { materialName, unit, quantityOnHand, reorderThreshold, notes, vendorName, vendorContact, leadTimeDays } =
-    req.body as {
-      materialName?: string;
-      unit?: string;
-      quantityOnHand?: number;
-      reorderThreshold?: number;
-      notes?: string;
-      vendorName?: string;
-      vendorContact?: string;
-      leadTimeDays?: number;
-    };
+  const {
+    materialName,
+    unit,
+    isAreaBased,
+    quantityOnHand,
+    reorderThreshold,
+    notes,
+    vendorName,
+    vendorContact,
+    leadTimeDays,
+  } = req.body as {
+    materialName?: string;
+    unit?: string;
+    isAreaBased?: boolean;
+    quantityOnHand?: number;
+    reorderThreshold?: number;
+    notes?: string;
+    vendorName?: string;
+    vendorContact?: string;
+    leadTimeDays?: number;
+  };
   if (!materialName?.trim()) {
     return res.status(400).json({ error: "materialName is required" });
   }
@@ -32,6 +42,7 @@ router.post("/", requireRole("admin", "manager"), async (req, res) => {
   const stock = await MaterialStock.create({
     materialName: materialName.trim(),
     unit: unit?.trim() || "each",
+    isAreaBased: Boolean(isAreaBased),
     quantityOnHand: quantityOnHand ?? 0,
     reorderThreshold: reorderThreshold ?? 0,
     notes,
@@ -47,17 +58,27 @@ router.patch("/:id", requireRole("admin", "manager"), async (req, res) => {
   const stock = await MaterialStock.findById(req.params.id);
   if (!stock) return res.status(404).json({ error: "Material not found" });
 
-  const { materialName, unit, quantityOnHand, reorderThreshold, notes, vendorName, vendorContact, leadTimeDays } =
-    req.body as {
-      materialName?: string;
-      unit?: string;
-      quantityOnHand?: number;
-      reorderThreshold?: number;
-      notes?: string;
-      vendorName?: string;
-      vendorContact?: string;
-      leadTimeDays?: number;
-    };
+  const {
+    materialName,
+    unit,
+    isAreaBased,
+    quantityOnHand,
+    reorderThreshold,
+    notes,
+    vendorName,
+    vendorContact,
+    leadTimeDays,
+  } = req.body as {
+    materialName?: string;
+    unit?: string;
+    isAreaBased?: boolean;
+    quantityOnHand?: number;
+    reorderThreshold?: number;
+    notes?: string;
+    vendorName?: string;
+    vendorContact?: string;
+    leadTimeDays?: number;
+  };
 
   Object.assign(
     stock,
@@ -65,6 +86,7 @@ router.patch("/:id", requireRole("admin", "manager"), async (req, res) => {
       Object.entries({
         materialName,
         unit,
+        isAreaBased,
         quantityOnHand,
         reorderThreshold,
         notes,

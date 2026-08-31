@@ -9,6 +9,7 @@ export async function createMaterialStock(
   input: {
     materialName: string;
     unit: string;
+    isAreaBased?: boolean;
     quantityOnHand: number;
     reorderThreshold: number;
     vendorName?: string;
@@ -29,7 +30,15 @@ export async function updateMaterialStock(
   patch: Partial<
     Pick<
       MaterialStock,
-      "materialName" | "unit" | "quantityOnHand" | "reorderThreshold" | "notes" | "vendorName" | "vendorContact" | "leadTimeDays"
+      | "materialName"
+      | "unit"
+      | "isAreaBased"
+      | "quantityOnHand"
+      | "reorderThreshold"
+      | "notes"
+      | "vendorName"
+      | "vendorContact"
+      | "leadTimeDays"
     >
   >,
   token: string | null

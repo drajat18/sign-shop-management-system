@@ -1,6 +1,7 @@
 import type { ProductionJob, OrderStatus } from "../types/index.js";
 
 const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  quote: "Quote",
   new: "New",
   design_approval: "Design/Approval",
   in_production: "In Production",
