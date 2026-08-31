@@ -5,7 +5,8 @@ export type OrderStatus =
   | "design_approval"
   | "in_production"
   | "ready_for_pickup"
-  | "completed";
+  | "completed"
+  | "cancelled";
 
 export type JobStatus = "queued" | "in_progress" | "blocked" | "done";
 
@@ -38,12 +39,26 @@ export interface Order {
   status: OrderStatus;
   total: number;
   paymentStatus: "unpaid" | "partial" | "paid";
+  amountPaid?: number;
   itemsCount: number;
   unreadMessageCount?: number;
   customerResponseType?: "approved" | "message";
   installRequired?: boolean;
   installAddress?: string;
   installCharge?: number;
+  installDate?: string;
+}
+
+export type PaymentMethod = "cash" | "card_in_person" | "check" | "online" | "other";
+
+export interface Payment {
+  id: string;
+  order: string;
+  amount: number;
+  method: PaymentMethod;
+  note?: string;
+  recordedBy?: { id: string; name: string } | null;
+  createdAt: string;
 }
 
 export interface OrderMessage {
@@ -245,6 +260,9 @@ export interface MaterialStock {
   quantityOnHand: number;
   reorderThreshold: number;
   notes?: string;
+  vendorName?: string;
+  vendorContact?: string;
+  leadTimeDays?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -287,6 +305,11 @@ export interface PortalOrder {
   description?: string;
   total: number;
   paymentStatus: string;
+  amountPaid?: number;
+  installRequired?: boolean;
+  installAddress?: string;
+  installCharge?: number;
+  installDate?: string;
   items: PortalOrderItem[];
 }
 
@@ -302,9 +325,18 @@ export interface DummyCheckoutSession {
 export interface ReportsSummary {
   totalOrders: number;
   totalOrderValue: number;
-  paidRevenue: number;
+  amountCollected: number;
+  outstandingBalance: number;
+  cancelledOrders: number;
+  cancelledValue: number;
+  overdueDollarsTotal: number;
+  overdueCount: number;
+  estimatedMaterialCost: number;
+  estimatedMargin: number;
   ordersByStatus: Record<string, number>;
   avgTurnaroundDays: number | null;
+  revenueBySignType: { signType: string; revenue: number; estimatedCost: number }[];
+  arAging: Record<"Not yet due" | "1-30 days" | "31-60 days" | "61-90 days" | "90+ days", number>;
   jobsByEmployee: { name: string; count: number }[];
 }
 

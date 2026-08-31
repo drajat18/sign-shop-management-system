@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { getShopModels } from "../models/shopModels.js";
 import Shop from "../models/platform/Shop.js";
+import { recomputeOrderPayments } from "../services/orderTotals.js";
 import { getShopConnection } from "../services/shopConnection.js";
 import {
   verifyChargeLinkToken,
@@ -78,14 +79,19 @@ router.post("/dummy-charge/:token/complete", async (req, res) => {
   } catch {
     return res.status(404).json({ error: "This link is invalid or has expired." });
   }
-  const { Order } = getShopModels(getShopConnection(decoded.shopId));
+  const models = getShopModels(getShopConnection(decoded.shopId));
+  const { Order, Payment } = models;
   const order = await Order.findById(decoded.orderId);
   if (!order) return res.status(404).json({ error: "This link is invalid or has expired." });
 
-  order.paymentStatus = decoded.amount >= order.total ? "paid" : "partial";
-  await order.save();
-  await order.populate("customer");
-  emitToShop(decoded.shopId, EVENTS.ORDER_UPDATED, order);
+  const reference = `dummy:${req.params.token}`;
+  const already = await Payment.findOne({ order: order._id, note: reference });
+  if (!already) {
+    await Payment.create({ order: order._id, amount: decoded.amount, method: "online", note: reference });
+    await recomputeOrderPayments(models, order.id);
+  }
+  const updated = await Order.findById(order.id).populate("customer");
+  emitToShop(decoded.shopId, EVENTS.ORDER_UPDATED, updated);
 
   res.json({ message: "Test payment received — thank you!" });
 });

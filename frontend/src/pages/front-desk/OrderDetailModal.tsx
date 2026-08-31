@@ -15,7 +15,9 @@ import type {
   OrderItem,
   OrderMessage,
   OrderStatus,
+  Payment,
   PaymentConnectionStatus,
+  PaymentMethod,
   PaymentOAuthProvider,
   StorageConnectionStatus,
   StorageOAuthProvider,
@@ -28,8 +30,15 @@ const ORDER_STATUSES: OrderStatus[] = [
   "in_production",
   "ready_for_pickup",
   "completed",
+  "cancelled",
 ];
 const PAYMENT_STATUSES = ["unpaid", "partial", "paid"] as const;
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: "cash", label: "Cash" },
+  { value: "card_in_person", label: "Card (in person)" },
+  { value: "check", label: "Check" },
+  { value: "other", label: "Other" },
+];
 const STORAGE_LABEL: Record<StorageProvider, string> = {
   internal: "Internal storage",
   dropbox: "Dropbox",
@@ -83,6 +92,11 @@ export default function OrderDetailModal({
   const [messageBusy, setMessageBusy] = useState(false);
   const [fileHistory, setFileHistory] = useState<Record<string, FileVersion[]>>({});
   const [historyOpenFor, setHistoryOpenFor] = useState<string | null>(null);
+  const [payments, setPayments] = useState<Payment[] | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [recordPaymentBusy, setRecordPaymentBusy] = useState(false);
 
   async function toggleFileHistory(itemId: string) {
     if (historyOpenFor === itemId) {
@@ -159,6 +173,38 @@ export default function OrderDetailModal({
     await apiFetch(`/orders/${orderId}`, { method: "PATCH", token, body: JSON.stringify(patch) });
     loadOrder();
     onChanged();
+  }
+
+  function loadPayments() {
+    apiFetch<Payment[]>(`/orders/${orderId}/payments`, { token }).then(setPayments).catch(console.error);
+  }
+
+  useEffect(loadPayments, [orderId, token]);
+
+  async function handleRecordPayment() {
+    const amount = Number(paymentAmount);
+    if (!amount || amount <= 0) {
+      setError("Payment amount must be greater than 0");
+      return;
+    }
+    setRecordPaymentBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/orders/${orderId}/payments`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ amount, method: paymentMethod, note: paymentNote.trim() || undefined }),
+      });
+      setPaymentAmount("");
+      setPaymentNote("");
+      loadPayments();
+      loadOrder();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record payment");
+    } finally {
+      setRecordPaymentBusy(false);
+    }
   }
 
   async function patchItem(itemId: string, patch: Record<string, unknown>) {
@@ -386,30 +432,89 @@ export default function OrderDetailModal({
               </label>
             </div>
 
-            {editable && paymentConnected && order.paymentStatus !== "paid" && (
-              <div
-                style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: 16 }}
-              >
-                <label className="field" style={{ maxWidth: 160 }}>
-                  Charge amount
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={chargeAmount ?? order.total}
-                    onChange={(e) => setChargeAmount(Number(e.target.value) || 0)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={handleCopyPaymentLink}
-                  disabled={paymentBusy}
-                >
-                  {paymentLinkCopied ? "Link copied!" : paymentBusy ? "Generating…" : "Copy payment link"}
-                </button>
+            <div className="card" style={{ padding: 16, marginBottom: 16, background: "var(--color-neutral-soft)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 12 }}>
+                <span>
+                  Paid: <strong>${(order.amountPaid ?? 0).toFixed(2)}</strong> of ${order.total.toFixed(2)}
+                </span>
+                <span className="cell-muted">Balance due: ${(order.total - (order.amountPaid ?? 0)).toFixed(2)}</span>
               </div>
-            )}
+
+              {editable && order.paymentStatus !== "paid" && (
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: paymentConnected ? 12 : 0 }}>
+                  <label className="field" style={{ maxWidth: 120 }}>
+                    Amount
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                    />
+                  </label>
+                  <label className="field" style={{ maxWidth: 160 }}>
+                    Method
+                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
+                      {PAYMENT_METHODS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field" style={{ flex: 1, minWidth: 140 }}>
+                    Note (optional)
+                    <input value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} placeholder="e.g. deposit" />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={handleRecordPayment}
+                    disabled={recordPaymentBusy}
+                  >
+                    {recordPaymentBusy ? "Recording…" : "Record payment"}
+                  </button>
+                </div>
+              )}
+
+              {editable && paymentConnected && order.paymentStatus !== "paid" && (
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                  <label className="field" style={{ maxWidth: 160 }}>
+                    Charge amount
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={chargeAmount ?? order.total}
+                      onChange={(e) => setChargeAmount(Number(e.target.value) || 0)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={handleCopyPaymentLink}
+                    disabled={paymentBusy}
+                  >
+                    {paymentLinkCopied ? "Link copied!" : paymentBusy ? "Generating…" : "Copy payment link"}
+                  </button>
+                </div>
+              )}
+
+              {payments && payments.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  {payments.map((p) => (
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0" }} className="cell-muted">
+                      <span>
+                        {new Date(p.createdAt).toLocaleDateString()} · {p.method.replace("_", " ")}
+                        {p.note ? ` · ${p.note}` : ""}
+                      </span>
+                      <span>${p.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <label className="field">
               Order notes
@@ -435,7 +540,7 @@ export default function OrderDetailModal({
                   Needs installation
                 </label>
                 {order.installRequired && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12, marginTop: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 160px", gap: 12, marginTop: 12 }}>
                     <label className="field">
                       Installation address
                       <input
@@ -445,6 +550,14 @@ export default function OrderDetailModal({
                           e.target.value !== (order.installAddress ?? "") &&
                           patchOrder({ installAddress: e.target.value })
                         }
+                      />
+                    </label>
+                    <label className="field">
+                      Install date
+                      <input
+                        type="date"
+                        defaultValue={order.installDate ? order.installDate.slice(0, 10) : ""}
+                        onBlur={(e) => patchOrder({ installDate: e.target.value || null })}
                       />
                     </label>
                     <label className="field">
@@ -469,6 +582,7 @@ export default function OrderDetailModal({
                   Installation
                   <p className="cell-muted" style={{ fontSize: 13 }}>
                     {order.installAddress || "No address on file"}
+                    {order.installDate ? ` · ${new Date(order.installDate).toLocaleDateString()}` : ""}
                     {order.installCharge ? ` · $${order.installCharge.toFixed(2)} install charge` : ""}
                   </p>
                 </div>

@@ -36,6 +36,7 @@ export default function NewOrderModal({
   const [description, setDescription] = useState("");
   const [installRequired, setInstallRequired] = useState(false);
   const [installAddress, setInstallAddress] = useState("");
+  const [installDate, setInstallDate] = useState("");
   const [installCharge, setInstallCharge] = useState(0);
   const [items, setItems] = useState<NewOrderItemInput[]>(
     duplicateFrom ? duplicateFrom.items.map((i) => ({ ...i, file: null })) : [emptyItem()]
@@ -125,6 +126,7 @@ export default function NewOrderModal({
             description: description || undefined,
             installRequired,
             installAddress: installRequired ? installAddress : undefined,
+            installDate: installRequired ? installDate || undefined : undefined,
             installCharge: installRequired ? installCharge : undefined,
             items: items.map(({ file: _file, ...rest }) => rest),
           }),
@@ -249,6 +251,10 @@ export default function NewOrderModal({
                         value={installAddress}
                         onChange={(e) => setInstallAddress(e.target.value)}
                       />
+                    </label>
+                    <label className="field">
+                      Install date
+                      <input type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} />
                     </label>
                     <label className="field">
                       Installation charge

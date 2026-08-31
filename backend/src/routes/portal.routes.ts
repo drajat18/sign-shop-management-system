@@ -39,6 +39,11 @@ router.get("/:token", async (req, res) => {
     description: order.description,
     total: order.total,
     paymentStatus: order.paymentStatus,
+    amountPaid: order.amountPaid,
+    installRequired: order.installRequired,
+    installAddress: order.installAddress,
+    installCharge: order.installCharge,
+    installDate: order.installDate,
     items: items.map((item) => item.toJSON()),
   });
 });

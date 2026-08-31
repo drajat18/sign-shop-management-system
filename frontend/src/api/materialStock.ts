@@ -6,7 +6,15 @@ export async function listMaterialStock(token: string | null): Promise<MaterialS
 }
 
 export async function createMaterialStock(
-  input: { materialName: string; unit: string; quantityOnHand: number; reorderThreshold: number },
+  input: {
+    materialName: string;
+    unit: string;
+    quantityOnHand: number;
+    reorderThreshold: number;
+    vendorName?: string;
+    vendorContact?: string;
+    leadTimeDays?: number;
+  },
   token: string | null
 ): Promise<MaterialStock> {
   return apiFetch<MaterialStock>("/material-stock", {
@@ -18,7 +26,12 @@ export async function createMaterialStock(
 
 export async function updateMaterialStock(
   id: string,
-  patch: Partial<Pick<MaterialStock, "materialName" | "unit" | "quantityOnHand" | "reorderThreshold" | "notes">>,
+  patch: Partial<
+    Pick<
+      MaterialStock,
+      "materialName" | "unit" | "quantityOnHand" | "reorderThreshold" | "notes" | "vendorName" | "vendorContact" | "leadTimeDays"
+    >
+  >,
   token: string | null
 ): Promise<MaterialStock> {
   return apiFetch<MaterialStock>(`/material-stock/${id}`, {

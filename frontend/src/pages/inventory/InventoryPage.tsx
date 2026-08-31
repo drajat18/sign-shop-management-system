@@ -8,7 +8,15 @@ import {
 import { useAuth } from "../../auth/AuthContext.js";
 import type { MaterialStock } from "../../types/index.js";
 
-const emptyForm = { materialName: "", unit: "sqft", quantityOnHand: 0, reorderThreshold: 0 };
+const emptyForm = {
+  materialName: "",
+  unit: "sqft",
+  quantityOnHand: 0,
+  reorderThreshold: 0,
+  vendorName: "",
+  vendorContact: "",
+  leadTimeDays: 0,
+};
 
 export default function InventoryPage() {
   const { token, user } = useAuth();
@@ -116,13 +124,40 @@ export default function InventoryPage() {
               />
             </label>
           </div>
+          <div className="item-grid-primary">
+            <label className="field">
+              Reorder threshold
+              <input
+                type="number"
+                min={0}
+                value={form.reorderThreshold}
+                onChange={(e) => setForm({ ...form, reorderThreshold: Number(e.target.value) || 0 })}
+              />
+            </label>
+            <label className="field">
+              Vendor
+              <input
+                placeholder="Supplier name"
+                value={form.vendorName}
+                onChange={(e) => setForm({ ...form, vendorName: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              Vendor contact
+              <input
+                placeholder="Phone, email, or rep name"
+                value={form.vendorContact}
+                onChange={(e) => setForm({ ...form, vendorContact: e.target.value })}
+              />
+            </label>
+          </div>
           <label className="field" style={{ maxWidth: 220 }}>
-            Reorder threshold
+            Lead time (days)
             <input
               type="number"
               min={0}
-              value={form.reorderThreshold}
-              onChange={(e) => setForm({ ...form, reorderThreshold: Number(e.target.value) || 0 })}
+              value={form.leadTimeDays}
+              onChange={(e) => setForm({ ...form, leadTimeDays: Number(e.target.value) || 0 })}
             />
           </label>
           <div className="modal-actions">
@@ -156,6 +191,8 @@ export default function InventoryPage() {
                 <th>Unit</th>
                 <th>On hand</th>
                 <th>Reorder at</th>
+                <th>Vendor</th>
+                <th>Lead time</th>
                 {canManage && <th></th>}
               </tr>
             </thead>
@@ -196,6 +233,38 @@ export default function InventoryPage() {
                         />
                       ) : (
                         item.reorderThreshold
+                      )}
+                    </td>
+                    <td className="cell-muted">
+                      {canManage ? (
+                        <input
+                          style={{ width: 140 }}
+                          defaultValue={item.vendorName ?? ""}
+                          placeholder="Vendor"
+                          onBlur={(e) => {
+                            if (e.target.value !== (item.vendorName ?? "")) {
+                              handleUpdate(item.id, { vendorName: e.target.value });
+                            }
+                          }}
+                        />
+                      ) : (
+                        item.vendorName || "—"
+                      )}
+                    </td>
+                    <td className="cell-muted">
+                      {canManage ? (
+                        <input
+                          type="number"
+                          min={0}
+                          style={{ width: 70 }}
+                          defaultValue={item.leadTimeDays ?? 0}
+                          onBlur={(e) => {
+                            const value = Number(e.target.value) || 0;
+                            if (value !== (item.leadTimeDays ?? 0)) handleUpdate(item.id, { leadTimeDays: value });
+                          }}
+                        />
+                      ) : (
+                        item.leadTimeDays ? `${item.leadTimeDays}d` : "—"
                       )}
                     </td>
                     {canManage && (

@@ -17,6 +17,7 @@ const ORDER_STATUSES: OrderStatus[] = [
   "in_production",
   "ready_for_pickup",
   "completed",
+  "cancelled",
 ];
 const PAYMENT_STATUSES = ["unpaid", "partial", "paid"] as const;
 
@@ -163,7 +164,7 @@ export default function OrdersPage() {
   }
 
   function isOverdue(order: Order): boolean {
-    if (!order.dueDate || order.status === "completed") return false;
+    if (!order.dueDate || order.status === "completed" || order.status === "cancelled") return false;
     return new Date(order.dueDate).getTime() < Date.now();
   }
 

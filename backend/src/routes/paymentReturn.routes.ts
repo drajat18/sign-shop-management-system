@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getShopModels } from "../models/shopModels.js";
 import { getShopConnection } from "../services/shopConnection.js";
+import { recomputeOrderPayments } from "../services/orderTotals.js";
 import { capturePaypalOrder } from "../services/payments/paypalPayments.js";
 import { getSquareOrderState } from "../services/payments/squarePayments.js";
 import { verifyChargeLinkToken } from "../services/paymentOAuth/state.js";
@@ -12,14 +13,23 @@ function resultRedirect(success: boolean): string {
   return `${process.env.FRONTEND_URL}/payments/result?status=${success ? "success" : "failed"}`;
 }
 
-async function markOrderPaid(shopId: string, orderId: string, amount: number) {
-  const { Order } = getShopModels(getShopConnection(shopId));
+// `reference` is the provider's own id for this specific payment (Square's
+// order id, PayPal's order id) — recorded on the Payment so a refreshed or
+// re-followed return link never double-counts the same money twice.
+async function markOrderPaid(shopId: string, orderId: string, amount: number, reference: string) {
+  const models = getShopModels(getShopConnection(shopId));
+  const { Order, Payment } = models;
   const order = await Order.findById(orderId);
   if (!order) return;
-  order.paymentStatus = amount >= order.total ? "paid" : "partial";
-  await order.save();
-  await order.populate("customer");
-  emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
+
+  const already = await Payment.findOne({ order: order._id, note: reference });
+  if (!already) {
+    await Payment.create({ order: order._id, amount, method: "online", note: reference });
+    await recomputeOrderPayments(models, order.id);
+  }
+
+  const updated = await Order.findById(order.id).populate("customer");
+  emitToShop(shopId, EVENTS.ORDER_UPDATED, updated);
 }
 
 // Square redirects the customer here after checkout — orderId is Square's
@@ -44,7 +54,7 @@ router.get("/square", async (req, res) => {
   const state = await getSquareOrderState(connection.accessToken, orderId).catch(() => undefined);
   if (state !== "COMPLETED") return res.redirect(resultRedirect(false));
 
-  await markOrderPaid(decoded.shopId, decoded.orderId, decoded.amount);
+  await markOrderPaid(decoded.shopId, decoded.orderId, decoded.amount, `square:${orderId}`);
   res.redirect(resultRedirect(true));
 });
 
@@ -65,7 +75,7 @@ router.get("/paypal", async (req, res) => {
   const captured = await capturePaypalOrder(paypalOrderId).catch(() => false);
   if (!captured) return res.redirect(resultRedirect(false));
 
-  await markOrderPaid(decoded.shopId, decoded.orderId, decoded.amount);
+  await markOrderPaid(decoded.shopId, decoded.orderId, decoded.amount, `paypal:${paypalOrderId}`);
   res.redirect(resultRedirect(true));
 });
 

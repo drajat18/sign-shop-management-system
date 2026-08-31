@@ -12,6 +12,12 @@ export const materialStockSchema = new Schema(
     quantityOnHand: { type: Number, required: true, default: 0 },
     reorderThreshold: { type: Number, default: 0 },
     notes: String,
+    // Who to call when this needs restocking, and roughly how long it
+    // takes once ordered — the two things "we're low on this" is actually
+    // missing without a full vendor/PO system.
+    vendorName: String,
+    vendorContact: String,
+    leadTimeDays: Number,
   },
   { timestamps: true }
 );

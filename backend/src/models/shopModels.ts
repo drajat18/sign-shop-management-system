@@ -10,6 +10,7 @@ import { notificationLogSchema, type NotificationLog } from "./NotificationLog.j
 import { materialStockSchema, type MaterialStock } from "./MaterialStock.js";
 import { passwordResetTokenSchema, type PasswordResetToken } from "./PasswordResetToken.js";
 import { paymentConnectionSchema, type PaymentConnection } from "./PaymentConnection.js";
+import { paymentSchema, type Payment } from "./Payment.js";
 import { productionJobSchema, type ProductionJob } from "./ProductionJob.js";
 import { statusLogSchema, type StatusLog } from "./StatusLog.js";
 import { storageConnectionSchema, type StorageConnection } from "./StorageConnection.js";
@@ -29,6 +30,7 @@ export interface ShopModels {
   CustomerPortalToken: Model<CustomerPortalToken>;
   StorageConnection: Model<StorageConnection>;
   PaymentConnection: Model<PaymentConnection>;
+  Payment: Model<Payment>;
   NotificationLog: Model<NotificationLog>;
   MaterialStock: Model<MaterialStock>;
 }
@@ -68,6 +70,7 @@ export function getShopModels(connection: Connection): ShopModels {
       "PaymentConnection",
       paymentConnectionSchema
     ),
+    Payment: connection.model<Payment>("Payment", paymentSchema),
     NotificationLog: connection.model<NotificationLog>("NotificationLog", notificationLogSchema),
     MaterialStock: connection.model<MaterialStock>("MaterialStock", materialStockSchema),
   };

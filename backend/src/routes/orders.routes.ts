@@ -5,9 +5,10 @@ import { requireAuth } from "../middleware/auth.js";
 import { requirePlanFeature } from "../middleware/requirePlanFeature.js";
 import { requireRole } from "../middleware/requireRole.js";
 import type { Customer } from "../models/Customer.js";
+import { PAYMENT_METHODS } from "../models/Payment.js";
 import { getStripe } from "../services/billing/stripe.js";
 import { notifyCustomer } from "../services/notifications.js";
-import { recomputeOrderTotal } from "../services/orderTotals.js";
+import { recomputeOrderPayments, recomputeOrderTotal } from "../services/orderTotals.js";
 import { createPaypalOrder } from "../services/payments/paypalPayments.js";
 import { createSquarePaymentLink, withSquareAutoRefresh } from "../services/payments/squarePayments.js";
 import { paymentBackendUrl, signChargeLinkToken } from "../services/paymentOAuth/state.js";
@@ -36,7 +37,7 @@ const router = Router();
 
 router.use(requireAuth);
 
-const SORTABLE_FIELDS = ["createdAt", "dueDate", "total", "status", "paymentStatus"] as const;
+const SORTABLE_FIELDS = ["createdAt", "dueDate", "total", "status", "paymentStatus", "installDate"] as const;
 
 // Front desk/manager/admin create and edit orders; production can view
 // (they need the customer/due-date context behind each job they're assigned).
@@ -51,6 +52,7 @@ router.get("/", requireRole("admin", "manager", "front_desk", "production"), asy
     search,
     status,
     paymentStatus,
+    installRequired,
     sortBy = "createdAt",
     sortDir = "desc",
     page = "1",
@@ -60,6 +62,7 @@ router.get("/", requireRole("admin", "manager", "front_desk", "production"), asy
   const filter: Record<string, unknown> = {};
   if (status) filter.status = status;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
+  if (installRequired === "true") filter.installRequired = true;
   if (search?.trim()) {
     const matchingCustomers = await Customer.find({
       name: { $regex: search.trim(), $options: "i" },
@@ -110,11 +113,17 @@ router.get("/", requireRole("admin", "manager", "front_desk", "production"), asy
 // "export" is never swallowed as an :id value.
 router.get("/export", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Order, Customer } = req.models!;
-  const { search, status, paymentStatus } = req.query as Record<string, string | undefined>;
+  const { search, status, paymentStatus, from, to } = req.query as Record<string, string | undefined>;
 
   const filter: Record<string, unknown> = {};
   if (status) filter.status = status;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
+  if (from || to) {
+    const createdAt: Record<string, Date> = {};
+    if (from) createdAt.$gte = new Date(from);
+    if (to) createdAt.$lte = new Date(to);
+    filter.createdAt = createdAt;
+  }
   if (search?.trim()) {
     const matchingCustomers = await Customer.find({
       name: { $regex: search.trim(), $options: "i" },
@@ -125,15 +134,39 @@ router.get("/export", requireRole("admin", "manager", "front_desk"), async (req,
   const orders = await Order.find(filter).populate("customer").sort({ createdAt: -1 });
 
   const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  const header = ["Customer", "Due Date", "Status", "Payment Status", "Total", "Created At"];
-  const rows = orders.map((order) => [
-    (order.customer as unknown as { name?: string } | null)?.name ?? "",
-    order.dueDate ? new Date(order.dueDate).toLocaleDateString() : "",
-    order.status,
-    order.paymentStatus,
-    order.total.toFixed(2),
-    new Date(order.get("createdAt")).toLocaleDateString(),
-  ]);
+  // Accounting-ready: a bookkeeper can reconcile this against real deposits
+  // without cross-referencing the app — items/install broken out, and
+  // balance due computed from the real payment ledger, not just a label.
+  const header = [
+    "Order ID",
+    "Customer",
+    "Created At",
+    "Due Date",
+    "Status",
+    "Items Subtotal",
+    "Install Charge",
+    "Total",
+    "Amount Paid",
+    "Balance Due",
+    "Payment Status",
+  ];
+  const rows = orders.map((order) => {
+    const installCharge = order.installRequired ? order.installCharge ?? 0 : 0;
+    const amountPaid = order.amountPaid ?? 0;
+    return [
+      order.id,
+      (order.customer as unknown as { name?: string } | null)?.name ?? "",
+      new Date(order.get("createdAt")).toLocaleDateString(),
+      order.dueDate ? new Date(order.dueDate).toLocaleDateString() : "",
+      order.status,
+      (order.total - installCharge).toFixed(2),
+      installCharge.toFixed(2),
+      order.total.toFixed(2),
+      amountPaid.toFixed(2),
+      (order.total - amountPaid).toFixed(2),
+      order.paymentStatus,
+    ];
+  });
   const csv = [header, ...rows].map((row) => row.map((cell) => escape(String(cell))).join(",")).join("\n");
 
   res.setHeader("Content-Type", "text/csv");
@@ -167,17 +200,27 @@ router.get("/:id", requireRole("admin", "manager", "front_desk", "production"), 
 // up on the Production page instead of orders and jobs living in silos.
 router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Customer, Order, OrderItem, ProductionJob } = req.models!;
-  const { customerId, newCustomer, dueDate, description, installRequired, installAddress, installCharge, items } =
-    req.body as {
-      customerId?: string;
-      newCustomer?: { name: string; email?: string; phone?: string };
-      dueDate?: string;
-      description?: string;
-      installRequired?: boolean;
-      installAddress?: string;
-      installCharge?: number;
-      items: NewOrderItem[];
-    };
+  const {
+    customerId,
+    newCustomer,
+    dueDate,
+    description,
+    installRequired,
+    installAddress,
+    installCharge,
+    installDate,
+    items,
+  } = req.body as {
+    customerId?: string;
+    newCustomer?: { name: string; email?: string; phone?: string };
+    dueDate?: string;
+    description?: string;
+    installRequired?: boolean;
+    installAddress?: string;
+    installCharge?: number;
+    installDate?: string;
+    items: NewOrderItem[];
+  };
 
   if (!customerId && !newCustomer?.name) {
     return res.status(400).json({ error: "customerId or newCustomer.name is required" });
@@ -213,6 +256,7 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     installRequired: Boolean(installRequired),
     installAddress: installRequired ? installAddress : undefined,
     installCharge: resolvedInstallCharge,
+    installDate: installRequired ? installDate || undefined : undefined,
     total,
     createdBy: req.auth!.userId,
   });
@@ -371,16 +415,25 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   const existing = await Order.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: "Order not found" });
 
-  const { status, dueDate, paymentStatus, description, installRequired, installAddress, installCharge } =
-    req.body as {
-      status?: string;
-      dueDate?: string;
-      paymentStatus?: string;
-      description?: string;
-      installRequired?: boolean;
-      installAddress?: string;
-      installCharge?: number;
-    };
+  const {
+    status,
+    dueDate,
+    paymentStatus,
+    description,
+    installRequired,
+    installAddress,
+    installCharge,
+    installDate,
+  } = req.body as {
+    status?: string;
+    dueDate?: string;
+    paymentStatus?: string;
+    description?: string;
+    installRequired?: boolean;
+    installAddress?: string;
+    installCharge?: number;
+    installDate?: string | null;
+  };
 
   if (installRequired && !(installAddress ?? existing.installAddress)?.trim()) {
     return res.status(400).json({ error: "Installation address is required when installation is needed" });
@@ -402,6 +455,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
         installRequired,
         installAddress: installRequired === false ? "" : installAddress,
         installCharge,
+        installDate: installRequired === false ? null : installDate,
       }).filter(([, v]) => v !== undefined)
     )
   );
@@ -627,6 +681,45 @@ router.post("/:id/charge-link", requireRole("admin", "manager", "front_desk"), a
     `${paymentReturnBaseUrl()}/paypal-cancel`
   );
   res.json({ url, mode: "paypal" });
+});
+
+// The actual money ledger for an order — what a charge link produces once
+// completed, and what "Record payment" writes for cash/card/check taken at
+// the counter. Both land here so paymentStatus and A/R reporting reflect
+// real dollars either way.
+router.get("/:id/payments", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Payment } = req.models!;
+  const payments = await Payment.find({ order: req.params.id })
+    .sort({ createdAt: -1 })
+    .populate("recordedBy", "name");
+  res.json(payments);
+});
+
+router.post("/:id/payments", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, Payment } = req.models!;
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  const { amount, method, note } = req.body as { amount?: number; method?: string; note?: string };
+  if (typeof amount !== "number" || amount <= 0) {
+    return res.status(400).json({ error: "amount must be a positive number" });
+  }
+  if (!method || !PAYMENT_METHODS.includes(method as (typeof PAYMENT_METHODS)[number])) {
+    return res.status(400).json({ error: `method must be one of: ${PAYMENT_METHODS.join(", ")}` });
+  }
+
+  const payment = await Payment.create({
+    order: order._id,
+    amount,
+    method,
+    note,
+    recordedBy: req.auth!.userId,
+  });
+  await recomputeOrderPayments(req.models!, order.id);
+  const updatedOrder = await Order.findById(order.id).populate("customer");
+  emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, updatedOrder);
+
+  res.status(201).json(payment);
 });
 
 export default router;

@@ -13,13 +13,17 @@ router.get("/", requireRole("admin", "manager", "front_desk"), async (req, res) 
 });
 
 router.post("/", requireRole("admin", "manager"), async (req, res) => {
-  const { materialName, unit, quantityOnHand, reorderThreshold, notes } = req.body as {
-    materialName?: string;
-    unit?: string;
-    quantityOnHand?: number;
-    reorderThreshold?: number;
-    notes?: string;
-  };
+  const { materialName, unit, quantityOnHand, reorderThreshold, notes, vendorName, vendorContact, leadTimeDays } =
+    req.body as {
+      materialName?: string;
+      unit?: string;
+      quantityOnHand?: number;
+      reorderThreshold?: number;
+      notes?: string;
+      vendorName?: string;
+      vendorContact?: string;
+      leadTimeDays?: number;
+    };
   if (!materialName?.trim()) {
     return res.status(400).json({ error: "materialName is required" });
   }
@@ -31,6 +35,9 @@ router.post("/", requireRole("admin", "manager"), async (req, res) => {
     quantityOnHand: quantityOnHand ?? 0,
     reorderThreshold: reorderThreshold ?? 0,
     notes,
+    vendorName,
+    vendorContact,
+    leadTimeDays,
   });
   res.status(201).json(stock);
 });
@@ -40,20 +47,31 @@ router.patch("/:id", requireRole("admin", "manager"), async (req, res) => {
   const stock = await MaterialStock.findById(req.params.id);
   if (!stock) return res.status(404).json({ error: "Material not found" });
 
-  const { materialName, unit, quantityOnHand, reorderThreshold, notes } = req.body as {
-    materialName?: string;
-    unit?: string;
-    quantityOnHand?: number;
-    reorderThreshold?: number;
-    notes?: string;
-  };
+  const { materialName, unit, quantityOnHand, reorderThreshold, notes, vendorName, vendorContact, leadTimeDays } =
+    req.body as {
+      materialName?: string;
+      unit?: string;
+      quantityOnHand?: number;
+      reorderThreshold?: number;
+      notes?: string;
+      vendorName?: string;
+      vendorContact?: string;
+      leadTimeDays?: number;
+    };
 
   Object.assign(
     stock,
     Object.fromEntries(
-      Object.entries({ materialName, unit, quantityOnHand, reorderThreshold, notes }).filter(
-        ([, v]) => v !== undefined
-      )
+      Object.entries({
+        materialName,
+        unit,
+        quantityOnHand,
+        reorderThreshold,
+        notes,
+        vendorName,
+        vendorContact,
+        leadTimeDays,
+      }).filter(([, v]) => v !== undefined)
     )
   );
   await stock.save();

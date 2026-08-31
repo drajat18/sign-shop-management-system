@@ -374,6 +374,11 @@ textarea {
   color: var(--color-success);
 }
 
+.badge-order-cancelled {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 .badge-job-blocked {
   background: var(--color-danger-soft);
   color: var(--color-danger);

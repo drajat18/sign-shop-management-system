@@ -140,12 +140,26 @@ export default function CustomerPortalPage() {
           </div>
         ))}
 
+        {order.installRequired && (
+          <div className="item-card" style={{ marginBottom: 16 }}>
+            <div className="item-card-header">
+              <span className="item-card-title">Installation</span>
+            </div>
+            <p className="cell-muted" style={{ fontSize: 13 }}>
+              {order.installAddress || "Address to be confirmed"}
+              {order.installDate ? ` · ${new Date(order.installDate).toLocaleDateString()}` : ""}
+              {order.installCharge ? ` · $${order.installCharge.toFixed(2)} install charge` : ""}
+            </p>
+          </div>
+        )}
+
         <div className="order-total">
           <span>Total</span>
           <span>${order.total.toFixed(2)}</span>
         </div>
         <p className="cell-muted" style={{ fontSize: 13, marginTop: 8 }}>
           Payment: {order.paymentStatus}
+          {order.amountPaid ? ` · $${order.amountPaid.toFixed(2)} paid` : ""}
         </p>
 
         {actionError && <p className="form-error">{actionError}</p>}

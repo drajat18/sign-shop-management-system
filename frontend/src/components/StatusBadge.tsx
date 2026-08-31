@@ -6,6 +6,7 @@ const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   in_production: "In Production",
   ready_for_pickup: "Ready for Pickup",
   completed: "Completed",
+  cancelled: "Cancelled",
 };
 
 const JOB_STATUS_LABEL: Record<ProductionJob["status"], string> = {

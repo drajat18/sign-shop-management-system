@@ -2,6 +2,7 @@ import { Router } from "express";
 import type Stripe from "stripe";
 import { getShopModels } from "../models/shopModels.js";
 import { getStripe, STRIPE_CONFIGURED } from "../services/billing/stripe.js";
+import { recomputeOrderPayments } from "../services/orderTotals.js";
 import { getShopConnection } from "../services/shopConnection.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
 
@@ -30,14 +31,19 @@ router.post("/", async (req, res) => {
     const shopId = session.metadata?.shopId;
     const orderId = session.metadata?.orderId;
     if (shopId && orderId) {
-      const { Order } = getShopModels(getShopConnection(shopId));
+      const models = getShopModels(getShopConnection(shopId));
+      const { Order, Payment } = models;
       const order = await Order.findById(orderId);
       if (order) {
-        const paidCents = session.amount_total ?? 0;
-        order.paymentStatus = paidCents >= Math.round(order.total * 100) ? "paid" : "partial";
-        await order.save();
-        await order.populate("customer");
-        emitToShop(shopId, EVENTS.ORDER_UPDATED, order);
+        const reference = `stripe:${session.id}`;
+        const already = await Payment.findOne({ order: order._id, note: reference });
+        if (!already) {
+          const paidCents = session.amount_total ?? 0;
+          await Payment.create({ order: order._id, amount: paidCents / 100, method: "online", note: reference });
+          await recomputeOrderPayments(models, order.id);
+        }
+        const updated = await Order.findById(order.id).populate("customer");
+        emitToShop(shopId, EVENTS.ORDER_UPDATED, updated);
       }
     }
   }

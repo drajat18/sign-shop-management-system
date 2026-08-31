@@ -11,6 +11,7 @@ import ReportsPage from "./pages/admin/ReportsPage.js";
 import SettingsPage from "./pages/admin/SettingsPage.js";
 import FilesPage from "./pages/files/FilesPage.js";
 import ForgotPassword from "./pages/ForgotPassword.js";
+import InstallsPage from "./pages/front-desk/InstallsPage.js";
 import OrdersPage from "./pages/front-desk/OrdersPage.js";
 import InventoryPage from "./pages/inventory/InventoryPage.js";
 import Login from "./pages/Login.js";
@@ -98,6 +99,7 @@ export default function App() {
       />
       <Route element={<AppLayout />}>
         <Route path="/orders" element={guarded(user.role, PAGE_ACCESS.orders, <OrdersPage />, landing)} />
+        <Route path="/installs" element={guarded(user.role, PAGE_ACCESS.installs, <InstallsPage />, landing)} />
         <Route path="/jobs" element={guarded(user.role, PAGE_ACCESS.jobs, <JobsPage />, landing)} />
         <Route path="/files" element={guarded(user.role, PAGE_ACCESS.files, <FilesPage />, landing)} />
         <Route
