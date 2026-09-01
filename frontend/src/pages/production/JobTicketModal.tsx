@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import type { ProductionJob } from "../../types/index.js";
+import { formatDate } from "../../utils/date.js";
 
 export default function JobTicketModal({
   job,
@@ -39,7 +40,7 @@ export default function JobTicketModal({
             <p style={{ marginTop: 4 }}>
               <strong>Due:</strong>{" "}
               {job.orderItem.order?.dueDate
-                ? new Date(job.orderItem.order.dueDate).toLocaleDateString()
+                ? formatDate(job.orderItem.order.dueDate)
                 : "—"}
             </p>
           </div>

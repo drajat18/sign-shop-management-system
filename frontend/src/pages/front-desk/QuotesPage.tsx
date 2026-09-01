@@ -3,6 +3,7 @@ import { io } from "socket.io-client";
 import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import type { DuplicateOrderSeed, Order } from "../../types/index.js";
+import { formatDate } from "../../utils/date.js";
 import NewOrderModal from "./NewOrderModal.js";
 import OrderDetailModal from "./OrderDetailModal.js";
 
@@ -103,7 +104,7 @@ export default function QuotesPage() {
                   <td className="cell-primary">{quote.customer?.name ?? "—"}</td>
                   <td className="cell-muted">{quote.itemsCount}</td>
                   <td className="cell-muted">
-                    {quote.dueDate ? new Date(quote.dueDate).toLocaleDateString() : "—"}
+                    {quote.dueDate ? formatDate(quote.dueDate) : "—"}
                   </td>
                   <td className="cell-primary">${quote.total.toFixed(2)}</td>
                 </tr>

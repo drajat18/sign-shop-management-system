@@ -3,15 +3,12 @@ import { apiFetch } from "../../api/client.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { OrderStatusBadge } from "../../components/StatusBadge.js";
 import type { Order } from "../../types/index.js";
+import { formatDate, isDateOnlyPast } from "../../utils/date.js";
 import OrderDetailModal from "./OrderDetailModal.js";
 
 interface OrdersResponse {
   orders: Order[];
   total: number;
-}
-
-function isPast(dateStr: string): boolean {
-  return new Date(dateStr).getTime() < new Date().setHours(0, 0, 0, 0);
 }
 
 function dateKey(d: Date): string {
@@ -260,14 +257,14 @@ export default function InstallsPage() {
                   <tr key={order.id} onClick={() => setOpenOrderId(order.id)} style={{ cursor: "pointer" }}>
                     <td className="cell-primary">{order.customer?.name ?? "—"}</td>
                     <td
-                      className={order.installDate && isPast(order.installDate) && order.status !== "completed" && order.status !== "cancelled" ? undefined : "cell-muted"}
+                      className={order.installDate && isDateOnlyPast(order.installDate) && order.status !== "completed" && order.status !== "cancelled" ? undefined : "cell-muted"}
                       style={
-                        order.installDate && isPast(order.installDate) && order.status !== "completed" && order.status !== "cancelled"
+                        order.installDate && isDateOnlyPast(order.installDate) && order.status !== "completed" && order.status !== "cancelled"
                           ? { color: "var(--color-danger)", fontWeight: 600 }
                           : undefined
                       }
                     >
-                      {order.installDate ? new Date(order.installDate).toLocaleDateString() : "Not scheduled"}
+                      {order.installDate ? formatDate(order.installDate) : "Not scheduled"}
                     </td>
                     <td className="cell-muted">{order.installAssignedTo?.name ?? "—"}</td>
                     <td className="cell-muted">{order.installAddress || "—"}</td>

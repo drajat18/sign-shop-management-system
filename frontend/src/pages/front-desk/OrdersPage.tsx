@@ -5,6 +5,7 @@ import { bulkUpdateOrders, exportOrdersCsv } from "../../api/orders.js";
 import { useAuth } from "../../auth/AuthContext.js";
 import { OrderStatusBadge } from "../../components/StatusBadge.js";
 import type { DuplicateOrderSeed, Order, OrderStatus } from "../../types/index.js";
+import { formatDate, isDateOnlyPast } from "../../utils/date.js";
 import NewOrderModal from "./NewOrderModal.js";
 import OrderDetailModal from "./OrderDetailModal.js";
 
@@ -165,7 +166,7 @@ export default function OrdersPage() {
 
   function isOverdue(order: Order): boolean {
     if (!order.dueDate || order.status === "completed" || order.status === "cancelled") return false;
-    return new Date(order.dueDate).getTime() < Date.now();
+    return isDateOnlyPast(order.dueDate);
   }
 
   return (
@@ -319,7 +320,7 @@ export default function OrdersPage() {
                   </td>
                   <td className="cell-muted">{order.itemsCount}</td>
                   <td className="cell-muted">
-                    {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : "—"}
+                    {order.dueDate ? formatDate(order.dueDate) : "—"}
                     {isOverdue(order) && (
                       <span className="badge badge-job-blocked" style={{ marginLeft: 8 }}>
                         Overdue

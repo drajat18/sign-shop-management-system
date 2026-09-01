@@ -30,6 +30,7 @@ import type {
   StorageOAuthProvider,
   StorageProvider,
 } from "../../types/index.js";
+import { formatDate } from "../../utils/date.js";
 
 // Doesn't include "quote" — a real order never gets moved back to quote
 // through this dropdown; that stage is only reachable at creation, and
@@ -116,6 +117,49 @@ export default function OrderDetailModal({
     null
   );
   const [syncBusy, setSyncBusy] = useState(false);
+  // Setting up installation on an order that doesn't have it yet needs an
+  // address before the backend will accept installRequired=true — so this
+  // tracks "the checkbox is checked in the UI" separately from "the server
+  // has actually saved it," and the address/date/charge fields below are
+  // collected locally and sent together in one request once a real address
+  // is entered, rather than trying (and failing) to save installRequired
+  // alone the instant the box is checked.
+  const [installUIOpen, setInstallUIOpen] = useState(false);
+  const [pendingInstallAddress, setPendingInstallAddress] = useState("");
+  const [pendingInstallDate, setPendingInstallDate] = useState("");
+  const [pendingInstallCharge, setPendingInstallCharge] = useState(0);
+  const [installSaveBusy, setInstallSaveBusy] = useState(false);
+
+  useEffect(() => {
+    if (order) {
+      setInstallUIOpen(order.installRequired ?? false);
+      setPendingInstallAddress("");
+      setPendingInstallDate("");
+      setPendingInstallCharge(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id]);
+
+  async function handleSaveNewInstallation() {
+    if (!pendingInstallAddress.trim()) {
+      setError("Enter the installation address, or uncheck “Needs installation”");
+      return;
+    }
+    setInstallSaveBusy(true);
+    setError(null);
+    try {
+      await patchOrder({
+        installRequired: true,
+        installAddress: pendingInstallAddress.trim(),
+        installDate: pendingInstallDate || undefined,
+        installCharge: pendingInstallCharge,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save installation details");
+    } finally {
+      setInstallSaveBusy(false);
+    }
+  }
 
   async function toggleFileHistory(itemId: string) {
     if (historyOpenFor === itemId) {
@@ -534,7 +578,7 @@ export default function OrderDetailModal({
                   />
                 ) : (
                   <span className="cell-muted">
-                    {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : "—"}
+                    {order.dueDate ? formatDate(order.dueDate) : "—"}
                   </span>
                 )}
               </label>
@@ -662,11 +706,58 @@ export default function OrderDetailModal({
                 <label className="field field-inline">
                   <input
                     type="checkbox"
-                    checked={order.installRequired ?? false}
-                    onChange={(e) => patchOrder({ installRequired: e.target.checked })}
+                    checked={installUIOpen}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setInstallUIOpen(checked);
+                      if (!checked && order.installRequired) {
+                        patchOrder({ installRequired: false });
+                      }
+                    }}
                   />
                   Needs installation
                 </label>
+                {installUIOpen && !order.installRequired && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 160px", gap: 12 }}>
+                      <label className="field">
+                        Installation address
+                        <input
+                          value={pendingInstallAddress}
+                          placeholder="Site address where the sign will be installed"
+                          onChange={(e) => setPendingInstallAddress(e.target.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        Install date
+                        <input
+                          type="date"
+                          value={pendingInstallDate}
+                          onChange={(e) => setPendingInstallDate(e.target.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        Installation charge
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={pendingInstallCharge}
+                          onChange={(e) => setPendingInstallCharge(Number(e.target.value) || 0)}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ marginTop: 10 }}
+                      onClick={handleSaveNewInstallation}
+                      disabled={installSaveBusy}
+                    >
+                      {installSaveBusy ? "Saving…" : "Save installation"}
+                    </button>
+                  </div>
+                )}
                 {order.installRequired && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 160px", gap: 12, marginTop: 12 }}>
                     <label className="field">
@@ -724,7 +815,7 @@ export default function OrderDetailModal({
                   Installation
                   <p className="cell-muted" style={{ fontSize: 13 }}>
                     {order.installAddress || "No address on file"}
-                    {order.installDate ? ` · ${new Date(order.installDate).toLocaleDateString()}` : ""}
+                    {order.installDate ? ` · ${formatDate(order.installDate)}` : ""}
                     {order.installCharge ? ` · $${order.installCharge.toFixed(2)} install charge` : ""}
                     {order.installAssignedTo ? ` · ${order.installAssignedTo.name}` : ""}
                   </p>

@@ -7,6 +7,7 @@ import { CustomerResponseBadge, JobStatusBadge } from "../../components/StatusBa
 import OrderDetailModal from "../front-desk/OrderDetailModal.js";
 import JobTicketModal from "./JobTicketModal.js";
 import type { JobStatus, ProductionJob } from "../../types/index.js";
+import { formatDate } from "../../utils/date.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 const JOB_STATUSES: JobStatus[] = ["queued", "in_progress", "blocked", "done"];
@@ -121,7 +122,7 @@ export default function JobsPage() {
                   <td className="cell-muted">{job.orderItem.order?.customer?.name ?? "—"}</td>
                   <td className="cell-muted">
                     {job.orderItem.order?.dueDate
-                      ? new Date(job.orderItem.order.dueDate).toLocaleDateString()
+                      ? formatDate(job.orderItem.order.dueDate)
                       : "—"}
                   </td>
                   <td>

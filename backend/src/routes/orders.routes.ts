@@ -14,6 +14,7 @@ import { createPaypalOrder } from "../services/payments/paypalPayments.js";
 import { createSquarePaymentLink, withSquareAutoRefresh } from "../services/payments/squarePayments.js";
 import { paymentBackendUrl, signChargeLinkToken } from "../services/paymentOAuth/state.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
+import { formatDate } from "../utils/formatDate.js";
 
 function paymentReturnBaseUrl(): string {
   return `${paymentBackendUrl()}/api/payment-return`;
@@ -165,7 +166,7 @@ router.get("/export", requireRole("admin", "manager", "front_desk"), async (req,
       order.id,
       (order.customer as unknown as { name?: string } | null)?.name ?? "",
       new Date(order.get("createdAt")).toLocaleDateString(),
-      order.dueDate ? new Date(order.dueDate).toLocaleDateString() : "",
+      order.dueDate ? formatDate(order.dueDate) : "",
       order.status,
       (order.total - installCharge).toFixed(2),
       installCharge.toFixed(2),
@@ -324,7 +325,7 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     void notifyCustomer(req.models!, shopId, order, customer, {
       subject: "Order confirmed",
       text: `Hi! We've received your order — ${itemCount} item${itemCount === 1 ? "" : "s"}, total $${total.toFixed(2)}.${
-        dueDate ? ` Expected by ${new Date(dueDate).toLocaleDateString()}.` : ""
+        dueDate ? ` Expected by ${formatDate(dueDate)}.` : ""
       } We'll keep you updated as it moves through production.`,
       trigger: "order_created",
     });
@@ -374,7 +375,7 @@ router.post("/:id/convert-to-order", requireRole("admin", "manager", "front_desk
 
   void notifyCustomer(req.models!, shopId, order, order.customer as unknown as CustomerDoc, {
     subject: "Order confirmed",
-    text: `Hi! We've received your order — ${items.length} item${items.length === 1 ? "" : "s"}, total $${order.total.toFixed(2)}. Expected by ${new Date(resolvedDueDate).toLocaleDateString()}. We'll keep you updated as it moves through production.`,
+    text: `Hi! We've received your order — ${items.length} item${items.length === 1 ? "" : "s"}, total $${order.total.toFixed(2)}. Expected by ${formatDate(resolvedDueDate)}. We'll keep you updated as it moves through production.`,
     trigger: "order_created",
   });
 
@@ -634,9 +635,7 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
       existing.customer as unknown as CustomerDoc,
       {
         subject: "Your order's due date changed",
-        text: `Hi! Just a quick update — your order's due date is now ${new Date(
-          existing.dueDate!
-        ).toLocaleDateString()}.`,
+        text: `Hi! Just a quick update — your order's due date is now ${formatDate(existing.dueDate!)}.`,
         trigger: "order_due_date_changed",
       }
     );

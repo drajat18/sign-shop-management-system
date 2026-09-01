@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiFetch } from "../../api/client.js";
 import { OrderStatusBadge } from "../../components/StatusBadge.js";
 import type { OrderMessage, PortalOrder } from "../../types/index.js";
+import { formatDate } from "../../utils/date.js";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
@@ -106,7 +107,7 @@ export default function CustomerPortalPage() {
           <OrderStatusBadge status={order.status} />
           {order.dueDate && (
             <span className="cell-muted" style={{ fontSize: 13 }}>
-              Due {new Date(order.dueDate).toLocaleDateString()}
+              Due {formatDate(order.dueDate)}
             </span>
           )}
         </div>
@@ -147,7 +148,7 @@ export default function CustomerPortalPage() {
             </div>
             <p className="cell-muted" style={{ fontSize: 13 }}>
               {order.installAddress || "Address to be confirmed"}
-              {order.installDate ? ` · ${new Date(order.installDate).toLocaleDateString()}` : ""}
+              {order.installDate ? ` · ${formatDate(order.installDate)}` : ""}
               {order.installCharge ? ` · $${order.installCharge.toFixed(2)} install charge` : ""}
             </p>
           </div>
