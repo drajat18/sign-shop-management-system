@@ -3,6 +3,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { consumeMaterialForItem, restockMaterialForItem } from "../services/materialConsumption.js";
 import { recomputeOrderTotal } from "../services/orderTotals.js";
+import { validateOrderItemFields } from "../utils/validateOrderItem.js";
 
 const router = Router();
 
@@ -51,6 +52,18 @@ router.patch("/:id", async (req, res) => {
     materialCostVendor?: string;
   };
 
+  // Validated against the merged result, not just whatever fields this
+  // particular request happens to touch — a lone {quantity: -5} patch has to
+  // be rejected the same as a full item with a negative quantity would be.
+  if (signType !== undefined || price !== undefined || quantity !== undefined) {
+    const itemError = validateOrderItemFields({
+      signType: signType ?? item.signType,
+      price: price ?? item.price,
+      quantity: quantity ?? item.quantity,
+    });
+    if (itemError) return res.status(400).json({ error: itemError });
+  }
+
   // Consumption is only real once the item belongs to a committed order —
   // recompute it here whenever quantity, dimensions, or the linked material
   // change, so an edit never leaves stock reflecting stale numbers.
@@ -64,24 +77,34 @@ router.patch("/:id", async (req, res) => {
   // about to be linked to.
   const previousConsumption = { materialStock: item.materialStock, materialConsumedQty: item.materialConsumedQty };
 
-  Object.assign(
-    item,
-    Object.fromEntries(
-      Object.entries({
-        signType,
-        size,
-        widthIn,
-        heightIn,
-        material,
-        materialStock,
-        description,
-        quantity,
-        price,
-        materialCostEstimate,
-        materialCostVendor,
-      }).filter(([, v]) => v !== undefined)
-    )
-  );
+  const patch = Object.fromEntries(
+    Object.entries({
+      signType,
+      size,
+      widthIn,
+      heightIn,
+      material,
+      materialStock,
+      description,
+      quantity,
+      price,
+      materialCostEstimate,
+      materialCostVendor,
+    }).filter(([, v]) => v !== undefined)
+  ) as Record<string, unknown>;
+
+  // Only the fields a person actually edits by hand — not the
+  // material-linking/cost-lookup bookkeeping fields — are worth an audit
+  // trail entry; those move automatically as a side effect of other edits.
+  const AUDITED_FIELDS = ["signType", "size", "widthIn", "heightIn", "material", "description", "quantity", "price"];
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const field of AUDITED_FIELDS) {
+    if (field in patch && patch[field] !== (item as unknown as Record<string, unknown>)[field]) {
+      changes[field] = { from: (item as unknown as Record<string, unknown>)[field], to: patch[field] };
+    }
+  }
+
+  Object.assign(item, patch);
 
   if (consumptionInputsChanged) {
     const order = await Order.findById(item.order);
@@ -94,6 +117,18 @@ router.patch("/:id", async (req, res) => {
 
   await item.save();
   await recomputeOrderTotal(req.models!, item.order.toString());
+
+  if (Object.keys(changes).length > 0) {
+    await req.models!.AuditLog.create({
+      action: "order_item_updated",
+      actorUserId: req.auth!.userId,
+      targetId: item._id,
+      // Stored as a plain string, not the ObjectId itself — metadata is a
+      // Mixed field, so Mongoose won't cast a query string to ObjectId for
+      // it the way it would for a real typed ref field.
+      metadata: { orderId: item.order.toString(), changes },
+    });
+  }
 
   res.json(item);
 });

@@ -2,11 +2,19 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
 import { usePlan } from "../auth/PlanContext.js";
 import { NAV_ITEMS, ROLE_LABEL } from "../auth/roles.js";
+import { useIdleLogout } from "../hooks/useIdleLogout.js";
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const plan = usePlan();
   const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
+  useIdleLogout(handleLogout);
 
   if (!user) return null;
 
@@ -15,11 +23,6 @@ export default function AppLayout() {
   const links = NAV_ITEMS.filter((item) => item.roles.includes(user.role)).filter(
     (item) => item.to !== "/reports" || plan?.features.reports === true
   );
-
-  function handleLogout() {
-    logout();
-    navigate("/login");
-  }
 
   return (
     <div className="shell">

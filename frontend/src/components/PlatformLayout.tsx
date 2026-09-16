@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { usePlatformAuth } from "../auth/PlatformAuthContext.js";
 import type { PlatformRole } from "../types/index.js";
+import { useIdleLogout } from "../hooks/useIdleLogout.js";
 
 const PLATFORM_ROLE_LABEL: Record<PlatformRole, string> = {
   owner: "Owner",
@@ -18,14 +19,16 @@ export default function PlatformLayout() {
   const { user, logout } = usePlatformAuth();
   const navigate = useNavigate();
 
-  if (!user) return null;
-
-  const links = PLATFORM_NAV_ITEMS.filter((item) => item.roles.includes(user.role));
-
   function handleLogout() {
     logout();
     navigate("/platform/login");
   }
+
+  useIdleLogout(handleLogout);
+
+  if (!user) return null;
+
+  const links = PLATFORM_NAV_ITEMS.filter((item) => item.roles.includes(user.role));
 
   return (
     <div className="shell">

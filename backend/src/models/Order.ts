@@ -14,12 +14,26 @@ export const ORDER_STATUSES = [
   "cancelled",
 ] as const;
 
+export const DISCOUNT_TYPES = ["percent", "flat"] as const;
+
 export const orderSchema = new Schema(
   {
     customer: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
     dueDate: Date,
     description: String,
     status: { type: String, enum: ORDER_STATUSES, default: "new" },
+    // Only meaningful while status is "quote" — when it's in the past, the
+    // quote is stale pricing/availability and staff get a warning before
+    // converting it, rather than being silently blocked (a customer calling
+    // back a week late to accept is still a real business the shop wants).
+    validUntil: Date,
+    // A flat/percent discount applied to the whole order — not a reusable
+    // coupon-code system (no codes, no redemption tracking), just a manual
+    // reduction staff can apply per order (a repeat-customer break, a
+    // damaged-box credit). discountValue is a percentage (0-100) or a
+    // dollar amount depending on discountType; see recomputeOrderTotal.
+    discountType: { type: String, enum: DISCOUNT_TYPES },
+    discountValue: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
     paymentStatus: { type: String, enum: ["unpaid", "partial", "paid"], default: "unpaid" },
     // Derived from the Payment ledger (see Payment.ts) — the source of

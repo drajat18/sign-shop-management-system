@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../api/client.js";
 import { downloadArtwork, uploadArtwork } from "../../api/files.js";
 import { estimateMaterialCost } from "../../api/materialCost.js";
@@ -13,6 +13,7 @@ import type {
   AccountingConnectionStatus,
   AccountingProvider,
   AssignableUser,
+  AuditLogEntry,
   DuplicateOrderSeed,
   FileVersion,
   MaterialStock,
@@ -31,6 +32,7 @@ import type {
   StorageProvider,
 } from "../../types/index.js";
 import { formatDate } from "../../utils/date.js";
+import CardPaymentForm from "./CardPaymentForm.js";
 
 // Doesn't include "quote" — a real order never gets moved back to quote
 // through this dropdown; that stage is only reachable at creation, and
@@ -95,6 +97,8 @@ export default function OrderDetailModal({
   const [materialCostBusy, setMaterialCostBusy] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [paymentConnected, setPaymentConnected] = useState(false);
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [showCardForm, setShowCardForm] = useState(false);
   const [chargeAmount, setChargeAmount] = useState<number | null>(null);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
   const [paymentBusy, setPaymentBusy] = useState(false);
@@ -108,6 +112,14 @@ export default function OrderDetailModal({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [paymentNote, setPaymentNote] = useState("");
   const [recordPaymentBusy, setRecordPaymentBusy] = useState(false);
+  const [showRefundForm, setShowRefundForm] = useState(false);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundMethod, setRefundMethod] = useState<PaymentMethod>("cash");
+  const [refundNote, setRefundNote] = useState("");
+  const [refundBusy, setRefundBusy] = useState(false);
+  const refundInFlight = useRef(false);
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[] | null>(null);
+  const [showAuditLog, setShowAuditLog] = useState(false);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [materialStock, setMaterialStock] = useState<MaterialStock[]>([]);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
@@ -227,6 +239,7 @@ export default function OrderDetailModal({
     apiFetch<Record<PaymentOAuthProvider, PaymentConnectionStatus>>("/settings/payments", { token })
       .then((status) => {
         setPaymentConnected((Object.keys(status) as PaymentOAuthProvider[]).some((p) => status[p].connected));
+        setStripeConnected(status.stripe.connected);
       })
       .catch(console.error);
     apiFetch<Record<AccountingProvider, AccountingConnectionStatus>>("/settings/accounting", { token })
@@ -242,6 +255,11 @@ export default function OrderDetailModal({
     if (!order?.dueDate && !convertDueDate) {
       setError("A due date is required to convert this quote to an order");
       return;
+    }
+    if (order?.validUntil && new Date(order.validUntil) < new Date()) {
+      if (!confirm("This quote expired — pricing or material availability may have changed. Convert it anyway?")) {
+        return;
+      }
     }
     setConvertBusy(true);
     setError(null);
@@ -285,6 +303,14 @@ export default function OrderDetailModal({
 
   useEffect(loadPayments, [orderId, token]);
 
+  function handleToggleAuditLog() {
+    const next = !showAuditLog;
+    setShowAuditLog(next);
+    if (next && auditLog === null) {
+      apiFetch<AuditLogEntry[]>(`/orders/${orderId}/audit-log`, { token }).then(setAuditLog).catch(console.error);
+    }
+  }
+
   async function handleRecordPayment() {
     const amount = Number(paymentAmount);
     if (!amount || amount <= 0) {
@@ -309,6 +335,60 @@ export default function OrderDetailModal({
     } finally {
       setRecordPaymentBusy(false);
     }
+  }
+
+  async function handleRefund() {
+    if (refundInFlight.current) return;
+    const amount = Number(refundAmount);
+    if (!amount || amount <= 0) {
+      setError("Refund amount must be greater than 0");
+      return;
+    }
+    if (amount > (order?.amountPaid ?? 0)) {
+      setError("Refund amount can't exceed the amount paid");
+      return;
+    }
+    if (!confirm(`Refund $${amount.toFixed(2)} to this customer?`)) return;
+
+    refundInFlight.current = true;
+    setRefundBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/orders/${orderId}/refunds`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ amount, method: refundMethod, note: refundNote.trim() || undefined }),
+      });
+      setRefundAmount("");
+      setRefundNote("");
+      setShowRefundForm(false);
+      loadPayments();
+      loadOrder();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record refund");
+    } finally {
+      refundInFlight.current = false;
+      setRefundBusy(false);
+    }
+  }
+
+  function handleOpenCardForm() {
+    const amount = Number(paymentAmount);
+    if (!amount || amount <= 0) {
+      setError("Enter an amount before charging a card");
+      return;
+    }
+    setError(null);
+    setShowCardForm(true);
+  }
+
+  function handleCardPaymentSuccess() {
+    setShowCardForm(false);
+    setPaymentAmount("");
+    loadPayments();
+    loadOrder();
+    onChanged();
   }
 
   async function patchItem(itemId: string, patch: Record<string, unknown>) {
@@ -586,6 +666,42 @@ export default function OrderDetailModal({
 
             {order.status !== "quote" && (
             <div className="card" style={{ padding: 16, marginBottom: 16, background: "var(--color-neutral-soft)" }}>
+              {editable && (
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
+                  <label className="field" style={{ maxWidth: 160 }}>
+                    Discount
+                    <select
+                      value={order.discountType ?? ""}
+                      onChange={(e) =>
+                        patchOrder({
+                          discountType: e.target.value || null,
+                          discountValue: e.target.value ? order.discountValue ?? 0 : 0,
+                        })
+                      }
+                    >
+                      <option value="">None</option>
+                      <option value="percent">Percent off</option>
+                      <option value="flat">Flat amount off</option>
+                    </select>
+                  </label>
+                  {order.discountType && (
+                    <label className="field" style={{ maxWidth: 120 }}>
+                      {order.discountType === "percent" ? "Percent" : "Amount ($)"}
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        defaultValue={order.discountValue ?? 0}
+                        onBlur={(e) =>
+                          Number(e.target.value) !== (order.discountValue ?? 0) &&
+                          patchOrder({ discountValue: Number(e.target.value) || 0 })
+                        }
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 12 }}>
                 <span>
                   Paid: <strong>${(order.amountPaid ?? 0).toFixed(2)}</strong> of ${order.total.toFixed(2)}
@@ -628,7 +744,22 @@ export default function OrderDetailModal({
                   >
                     {recordPaymentBusy ? "Recording…" : "Record payment"}
                   </button>
+                  {stripeConnected && !showCardForm && (
+                    <button type="button" className="btn btn-primary btn-sm" onClick={handleOpenCardForm}>
+                      Charge a card
+                    </button>
+                  )}
                 </div>
+              )}
+
+              {editable && showCardForm && (
+                <CardPaymentForm
+                  orderId={orderId}
+                  amount={Number(paymentAmount) || 0}
+                  token={token}
+                  onSuccess={handleCardPaymentSuccess}
+                  onCancel={() => setShowCardForm(false)}
+                />
               )}
 
               {editable && paymentConnected && order.paymentStatus !== "paid" && (
@@ -659,12 +790,78 @@ export default function OrderDetailModal({
                   {payments.map((p) => (
                     <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0" }} className="cell-muted">
                       <span>
-                        {new Date(p.createdAt).toLocaleDateString()} · {p.method.replace("_", " ")}
+                        {new Date(p.createdAt).toLocaleDateString()} · {p.amount < 0 ? "Refund" : "Payment"} ·{" "}
+                        {p.method.replace("_", " ")}
                         {p.note ? ` · ${p.note}` : ""}
                       </span>
-                      <span>${p.amount.toFixed(2)}</span>
+                      <span style={p.amount < 0 ? { color: "var(--color-danger)" } : undefined}>
+                        {p.amount < 0 ? "-" : ""}${Math.abs(p.amount).toFixed(2)}
+                      </span>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {editable && (order.amountPaid ?? 0) > 0 && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--color-border)" }}>
+                  {!showRefundForm ? (
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowRefundForm(true)}>
+                      Issue refund
+                    </button>
+                  ) : (
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                      <label className="field" style={{ maxWidth: 120 }}>
+                        Amount
+                        <input
+                          type="number"
+                          min={0}
+                          max={order.amountPaid ?? 0}
+                          step="0.01"
+                          placeholder="0.00"
+                          value={refundAmount}
+                          onChange={(e) => setRefundAmount(e.target.value)}
+                        />
+                      </label>
+                      <label className="field" style={{ maxWidth: 160 }}>
+                        Method
+                        <select value={refundMethod} onChange={(e) => setRefundMethod(e.target.value as PaymentMethod)}>
+                          {PAYMENT_METHODS.map((m) => (
+                            <option key={m.value} value={m.value}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field" style={{ flex: 1, minWidth: 140 }}>
+                        Reason (optional)
+                        <input
+                          value={refundNote}
+                          onChange={(e) => setRefundNote(e.target.value)}
+                          placeholder="e.g. customer cancelled"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm"
+                        onClick={handleRefund}
+                        disabled={refundBusy}
+                      >
+                        {refundBusy ? "Refunding…" : "Confirm refund"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setShowRefundForm(false)}
+                        disabled={refundBusy}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                  <p className="cell-muted" style={{ fontSize: 12, marginTop: 6 }}>
+                    This records the refund in your books — it doesn't call Stripe/Square/PayPal to move money.
+                    Process the actual refund with your payment processor too.
+                  </p>
                 </div>
               )}
             </div>
@@ -719,7 +916,10 @@ export default function OrderDetailModal({
                 </label>
                 {installUIOpen && !order.installRequired && (
                   <div style={{ marginTop: 12 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 160px", gap: 12 }}>
+                    <div
+                      className="install-fields-grid"
+                      style={{ display: "grid", gridTemplateColumns: "1fr 140px 160px", gap: 12 }}
+                    >
                       <label className="field">
                         Installation address
                         <input
@@ -759,7 +959,10 @@ export default function OrderDetailModal({
                   </div>
                 )}
                 {order.installRequired && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 160px", gap: 12, marginTop: 12 }}>
+                  <div
+                    className="install-fields-grid"
+                    style={{ display: "grid", gridTemplateColumns: "1fr 140px 160px", gap: 12, marginTop: 12 }}
+                  >
                     <label className="field">
                       Installation address
                       <input
@@ -823,7 +1026,40 @@ export default function OrderDetailModal({
               )
             )}
 
-            <p className="section-label">Line items ({order.items.length})</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <p className="section-label">Line items ({order.items.length})</p>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleToggleAuditLog}>
+                {showAuditLog ? "Hide edit history" : "Edit history"}
+              </button>
+            </div>
+
+            {showAuditLog && (
+              <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+                {auditLog === null ? (
+                  <p className="cell-muted" style={{ fontSize: 13 }}>Loading…</p>
+                ) : auditLog.length === 0 ? (
+                  <p className="cell-muted" style={{ fontSize: 13 }}>No item edits recorded yet.</p>
+                ) : (
+                  auditLog.flatMap((entry) => {
+                    const changes = (entry.metadata?.changes ?? {}) as Record<
+                      string,
+                      { from: unknown; to: unknown }
+                    >;
+                    return Object.entries(changes).map(([field, { from, to }]) => (
+                      <div
+                        key={`${entry.id}-${field}`}
+                        className="cell-muted"
+                        style={{ fontSize: 12, padding: "4px 0" }}
+                      >
+                        {new Date(entry.createdAt).toLocaleString()} · {entry.actorUserId?.name ?? "Someone"} changed{" "}
+                        <strong>{field}</strong> from "{String(from ?? "—")}" to "{String(to ?? "—")}"
+                      </div>
+                    ));
+                  })
+                )}
+              </div>
+            )}
+
             {order.items.map((item, i) => (
               <div className="item-card" key={item.id}>
                 <div className="item-card-header">

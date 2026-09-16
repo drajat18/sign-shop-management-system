@@ -2,10 +2,11 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import PlatformUser from "../../models/platform/PlatformUser.js";
+import { clearLoginAttempts, loginRateLimit } from "../../middleware/loginRateLimit.js";
 
 const router = Router();
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimit, async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
@@ -15,6 +16,8 @@ router.post("/login", async (req, res) => {
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
+
+  clearLoginAttempts(req);
 
   const token = jwt.sign(
     { type: "platform", platformUserId: user.id, role: user.role },

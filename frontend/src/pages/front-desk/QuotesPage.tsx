@@ -46,6 +46,10 @@ export default function QuotesPage() {
 
   const canEdit = user?.role === "admin" || user?.role === "manager" || user?.role === "front_desk";
 
+  function isExpired(quote: Order): boolean {
+    return Boolean(quote.validUntil) && new Date(quote.validUntil as string) < new Date();
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -89,12 +93,14 @@ export default function QuotesPage() {
             </p>
           </div>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Customer</th>
                 <th>Items</th>
                 <th>Created</th>
+                <th>Valid until</th>
                 <th>Total</th>
               </tr>
             </thead>
@@ -106,11 +112,20 @@ export default function QuotesPage() {
                   <td className="cell-muted">
                     {quote.dueDate ? formatDate(quote.dueDate) : "—"}
                   </td>
+                  <td className="cell-muted">
+                    {quote.validUntil ? formatDate(quote.validUntil) : "—"}
+                    {isExpired(quote) && (
+                      <span className="badge badge-job-blocked" style={{ marginLeft: 8 }}>
+                        Expired
+                      </span>
+                    )}
+                  </td>
                   <td className="cell-primary">${quote.total.toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

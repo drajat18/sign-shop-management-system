@@ -7,6 +7,7 @@ import Shop from "../models/platform/Shop.js";
 import ShopUserIndex from "../models/platform/ShopUserIndex.js";
 import { sendEmail } from "../services/email.js";
 import { getShopConnection } from "../services/shopConnection.js";
+import { clearLoginAttempts, loginRateLimit } from "../middleware/loginRateLimit.js";
 
 const router = Router();
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -19,7 +20,7 @@ function hashToken(token: string): string {
 // own shop's database, and all we have to start with is an email — the
 // platform-level index below is what tells us which shop database to even
 // look in before a password can be checked.
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimit, async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
@@ -44,6 +45,8 @@ router.post("/login", async (req, res) => {
     await models.AuditLog.create({ action: "login_failed", actorEmail: normalizedEmail });
     return res.status(401).json({ error: "Invalid credentials" });
   }
+
+  clearLoginAttempts(req);
 
   const token = jwt.sign(
     { type: "shop", userId: user.id, role: user.role, shopId: shop.id },

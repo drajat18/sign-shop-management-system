@@ -5,15 +5,22 @@ import { requireAuth } from "../middleware/auth.js";
 import { requirePlanFeature } from "../middleware/requirePlanFeature.js";
 import { requireRole } from "../middleware/requireRole.js";
 import type { Customer } from "../models/Customer.js";
+import { DISCOUNT_TYPES } from "../models/Order.js";
 import { PAYMENT_METHODS } from "../models/Payment.js";
 import { getStripe } from "../services/billing/stripe.js";
-import { consumeMaterialForItem, restockMaterialForItem } from "../services/materialConsumption.js";
+import { consumeMaterialForItem } from "../services/materialConsumption.js";
 import { notifyCustomer } from "../services/notifications.js";
-import { recomputeOrderPayments, recomputeOrderTotal } from "../services/orderTotals.js";
+import {
+  calculateDiscountAmount,
+  cleanUpCancelledOrder,
+  recomputeOrderPayments,
+  recomputeOrderTotal,
+} from "../services/orderTotals.js";
 import { createPaypalOrder } from "../services/payments/paypalPayments.js";
 import { createSquarePaymentLink, withSquareAutoRefresh } from "../services/payments/squarePayments.js";
 import { paymentBackendUrl, signChargeLinkToken } from "../services/paymentOAuth/state.js";
 import { EVENTS, emitToShop } from "../sockets/index.js";
+import { validateOrderItemFields } from "../utils/validateOrderItem.js";
 import { formatDate } from "../utils/formatDate.js";
 
 function paymentReturnBaseUrl(): string {
@@ -225,6 +232,9 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     installCharge,
     installDate,
     isQuote,
+    validDays,
+    discountType,
+    discountValue,
     items,
   } = req.body as {
     customerId?: string;
@@ -236,8 +246,18 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     installCharge?: number;
     installDate?: string;
     isQuote?: boolean;
+    validDays?: number;
+    discountType?: (typeof DISCOUNT_TYPES)[number];
+    discountValue?: number;
     items: NewOrderItem[];
   };
+
+  if (discountType !== undefined && !DISCOUNT_TYPES.includes(discountType)) {
+    return res.status(400).json({ error: `discountType must be one of: ${DISCOUNT_TYPES.join(", ")}` });
+  }
+  if (discountValue !== undefined && (typeof discountValue !== "number" || discountValue < 0)) {
+    return res.status(400).json({ error: "discountValue must be a non-negative number" });
+  }
 
   if (!customerId && !newCustomer?.name) {
     return res.status(400).json({ error: "customerId or newCustomer.name is required" });
@@ -249,9 +269,8 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
     return res.status(400).json({ error: "At least one line item is required" });
   }
   for (const item of items) {
-    if (!item.signType || typeof item.price !== "number") {
-      return res.status(400).json({ error: "Each item needs a signType and a numeric price" });
-    }
+    const itemError = validateOrderItemFields(item);
+    if (itemError) return res.status(400).json({ error: itemError });
   }
   if (installRequired && !installAddress?.trim()) {
     return res.status(400).json({ error: "Installation address is required when installation is needed" });
@@ -263,18 +282,28 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
   if (!customer) return res.status(404).json({ error: "Customer not found" });
 
   const resolvedInstallCharge = installRequired ? installCharge ?? 0 : 0;
-  const total =
+  const preDiscountTotal =
     items.reduce((sum, item) => sum + item.price * (item.quantity ?? 1), 0) + resolvedInstallCharge;
+  const total = preDiscountTotal - calculateDiscountAmount(preDiscountTotal, discountType, discountValue);
+
+  // Defaults to 30 days out; staff can quote a shorter or longer window
+  // (e.g. a material-price-sensitive job) via validDays.
+  const quoteValidUntil = isQuote
+    ? new Date(Date.now() + (validDays && validDays > 0 ? validDays : 30) * 24 * 60 * 60 * 1000)
+    : undefined;
 
   const order = await Order.create({
     customer: customer._id,
     status: isQuote ? "quote" : "new",
     dueDate: isQuote ? undefined : dueDate,
+    validUntil: quoteValidUntil,
     description,
     installRequired: Boolean(installRequired),
     installAddress: installRequired ? installAddress : undefined,
     installCharge: resolvedInstallCharge,
     installDate: installRequired ? installDate || undefined : undefined,
+    discountType,
+    discountValue,
     total,
     createdBy: req.auth!.userId,
   });
@@ -402,9 +431,8 @@ router.post("/:id/items", requireRole("admin", "manager", "front_desk"), async (
     materialCostEstimate,
     materialCostVendor,
   } = req.body as NewOrderItem;
-  if (!signType || typeof price !== "number") {
-    return res.status(400).json({ error: "signType and a numeric price are required" });
-  }
+  const itemError = validateOrderItemFields({ signType, price, quantity });
+  if (itemError) return res.status(400).json({ error: itemError });
 
   const item = await OrderItem.create({
     order: order._id,
@@ -497,6 +525,9 @@ router.patch("/bulk", requireRole("admin", "manager", "front_desk"), async (req,
         toStatus: existing.status,
       });
     }
+    if (status === "cancelled" && previousStatus !== "cancelled") {
+      await cleanUpCancelledOrder(req.models!, existing.id);
+    }
 
     await existing.populate("customer");
     emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, existing);
@@ -535,6 +566,8 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
     installCharge,
     installDate,
     installAssignedTo,
+    discountType,
+    discountValue,
   } = req.body as {
     status?: string;
     dueDate?: string;
@@ -545,7 +578,16 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
     installCharge?: number;
     installDate?: string | null;
     installAssignedTo?: string | null;
+    discountType?: (typeof DISCOUNT_TYPES)[number] | null;
+    discountValue?: number;
   };
+
+  if (discountType !== undefined && discountType !== null && !DISCOUNT_TYPES.includes(discountType)) {
+    return res.status(400).json({ error: `discountType must be one of: ${DISCOUNT_TYPES.join(", ")}` });
+  }
+  if (discountValue !== undefined && (typeof discountValue !== "number" || discountValue < 0)) {
+    return res.status(400).json({ error: "discountValue must be a non-negative number" });
+  }
 
   if (installRequired && !(installAddress ?? existing.installAddress)?.trim()) {
     return res.status(400).json({ error: "Installation address is required when installation is needed" });
@@ -555,7 +597,9 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
   const previousDueDateTime = existing.dueDate ? new Date(existing.dueDate).getTime() : undefined;
   const totalNeedsRecompute =
     (installRequired !== undefined && installRequired !== existing.installRequired) ||
-    (installCharge !== undefined && installCharge !== existing.installCharge);
+    (installCharge !== undefined && installCharge !== existing.installCharge) ||
+    discountType !== undefined ||
+    discountValue !== undefined;
   Object.assign(
     existing,
     Object.fromEntries(
@@ -569,6 +613,8 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
         installCharge,
         installDate: installRequired === false ? null : installDate,
         installAssignedTo,
+        discountType,
+        discountValue,
       }).filter(([, v]) => v !== undefined)
     )
   );
@@ -576,20 +622,16 @@ router.patch("/:id", requireRole("admin", "manager", "front_desk"), async (req, 
     const { OrderItem } = req.models!;
     const items = await OrderItem.find({ order: existing._id });
     const itemsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    existing.total = itemsTotal + (existing.installRequired ? existing.installCharge ?? 0 : 0);
+    const preDiscountTotal = itemsTotal + (existing.installRequired ? existing.installCharge ?? 0 : 0);
+    const discountAmount = calculateDiscountAmount(preDiscountTotal, existing.discountType, existing.discountValue);
+    existing.total = preDiscountTotal - discountAmount;
   }
   await existing.save();
 
-  // Cancelling a committed order returns whatever material stock it
-  // consumed — a quote never consumed anything, so cancelling one is a
-  // no-op here. Guarded on the transition itself so re-saving an
-  // already-cancelled order (e.g. editing its notes) never double-restocks.
+  // Guarded on the transition itself so re-saving an already-cancelled
+  // order (e.g. editing its notes) never double-restocks or re-deletes.
   if (status === "cancelled" && previousStatus !== "cancelled") {
-    const { OrderItem } = req.models!;
-    const items = await OrderItem.find({ order: existing._id, materialConsumedQty: { $gt: 0 } });
-    for (const item of items) {
-      await restockMaterialForItem(req.models!, item);
-    }
+    await cleanUpCancelledOrder(req.models!, existing.id);
   }
 
   if (status && status !== previousStatus) {
@@ -819,6 +861,17 @@ router.get("/:id/payments", requireRole("admin", "manager", "front_desk"), async
   res.json(payments);
 });
 
+// Who changed what on this order's line items, and when — written by the
+// order-items PATCH route whenever a person-edited field (not a
+// system-derived one like consumed quantity) actually changes value.
+router.get("/:id/audit-log", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { AuditLog } = req.models!;
+  const entries = await AuditLog.find({ action: "order_item_updated", "metadata.orderId": req.params.id })
+    .sort({ createdAt: -1 })
+    .populate("actorUserId", "name");
+  res.json(entries);
+});
+
 router.post("/:id/payments", requireRole("admin", "manager", "front_desk"), async (req, res) => {
   const { Order, Payment } = req.models!;
   const order = await Order.findById(req.params.id);
@@ -845,6 +898,180 @@ router.post("/:id/payments", requireRole("admin", "manager", "front_desk"), asyn
 
   res.status(201).json(payment);
 });
+
+// A refund is a ledger entry, not a live call to Stripe/Square/PayPal — it
+// records that money went back to the customer so amountPaid/paymentStatus
+// stay accurate, the same way "Record payment" only logs money already
+// taken rather than moving it. Staff still process the actual refund
+// through whatever processor originally took the payment (or hand back
+// cash) and log it here to keep the books straight.
+router.post("/:id/refunds", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, Payment } = req.models!;
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  const { amount, method, note } = req.body as { amount?: number; method?: string; note?: string };
+  if (typeof amount !== "number" || amount <= 0) {
+    return res.status(400).json({ error: "amount must be a positive number" });
+  }
+  if (!method || !PAYMENT_METHODS.includes(method as (typeof PAYMENT_METHODS)[number])) {
+    return res.status(400).json({ error: `method must be one of: ${PAYMENT_METHODS.join(", ")}` });
+  }
+  if (amount > (order.amountPaid ?? 0)) {
+    return res.status(400).json({ error: "Refund amount can't exceed the amount paid" });
+  }
+
+  const refund = await Payment.create({
+    order: order._id,
+    amount: -amount,
+    method,
+    note,
+    recordedBy: req.auth!.userId,
+  });
+  await recomputeOrderPayments(req.models!, order.id);
+  const updatedOrder = await Order.findById(order.id).populate("customer");
+  emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, updatedOrder);
+
+  res.status(201).json(refund);
+});
+
+// Starts an in-person card charge — the customer hands over a card at the
+// counter and staff key it into a Stripe Elements form that never touches
+// this server (Stripe.js tokenizes it directly in the browser). Falls back
+// to a dummy completion flow when the shop's Stripe connection is still a
+// test one, same "configured vs connected" split used everywhere else in
+// this app's payment integrations.
+router.post("/:id/card-payment-intent", requireRole("admin", "manager", "front_desk"), async (req, res) => {
+  const { Order, PaymentConnection } = req.models!;
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  const { amount } = req.body as { amount?: number };
+  if (typeof amount !== "number" || amount <= 0) {
+    return res.status(400).json({ error: "amount must be a positive number" });
+  }
+
+  const connection = await PaymentConnection.findOne({ provider: "stripe" });
+  if (!connection) {
+    return res.status(400).json({ error: "Connect Stripe in Settings before charging a card." });
+  }
+
+  if (connection.connectedAccountId.startsWith("dummy_acct_")) {
+    // Generated once per attempt and echoed back on every dummy-complete
+    // call for it — a real PaymentIntent id would do this job for the live
+    // Stripe path below, but a dummy charge has no external reference to
+    // key on, so this stands in for one. Without it, a double-click (or a
+    // retried request) would create two Payment records for one charge.
+    return res.json({ mode: "dummy", attemptId: crypto.randomUUID() });
+  }
+
+  const stripe = getStripe();
+  const intent = await stripe.paymentIntents.create(
+    {
+      amount: Math.round(amount * 100),
+      currency: "usd",
+      payment_method_types: ["card"],
+      metadata: { shopId: req.auth!.shopId, orderId: order.id },
+    },
+    { stripeAccount: connection.connectedAccountId }
+  );
+
+  res.json({
+    mode: "stripe",
+    clientSecret: intent.client_secret,
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+    connectedAccountId: connection.connectedAccountId,
+  });
+});
+
+// Called once Stripe.js has confirmed the card on the connected account's
+// PaymentIntent. Re-fetches the PaymentIntent from Stripe itself rather
+// than trusting the client's word that it succeeded, then records it on
+// the same Payment ledger everything else (cash, checks, online links)
+// writes to — keyed by the PaymentIntent id so a retried confirm never
+// double-counts.
+router.post(
+  "/:id/card-payment-intent/:paymentIntentId/confirm",
+  requireRole("admin", "manager", "front_desk"),
+  async (req, res) => {
+    const { Order, Payment, PaymentConnection } = req.models!;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const connection = await PaymentConnection.findOne({ provider: "stripe" });
+    if (!connection || connection.connectedAccountId.startsWith("dummy_acct_")) {
+      return res.status(400).json({ error: "No live Stripe connection for this shop." });
+    }
+
+    const stripe = getStripe();
+    const intent = await stripe.paymentIntents.retrieve(req.params.paymentIntentId, undefined, {
+      stripeAccount: connection.connectedAccountId,
+    });
+    if (intent.status !== "succeeded") {
+      return res.status(400).json({ error: `Card payment hasn't completed yet (status: ${intent.status}).` });
+    }
+
+    const reference = `stripe_intent:${intent.id}`;
+    const already = await Payment.findOne({ order: order._id, note: reference });
+    if (!already) {
+      await Payment.create({
+        order: order._id,
+        amount: (intent.amount_received || intent.amount) / 100,
+        method: "card_in_person",
+        note: reference,
+        recordedBy: req.auth!.userId,
+      });
+      await recomputeOrderPayments(req.models!, order.id);
+    }
+    const updatedOrder = await Order.findById(order.id).populate("customer");
+    emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, updatedOrder);
+
+    res.json({ message: "Card charged." });
+  }
+);
+
+// Test-mode equivalent of the confirm step above — reachable only while
+// this shop's Stripe connection is still a dummy one, since there's no real
+// PaymentIntent to verify against.
+router.post(
+  "/:id/card-payment-intent/dummy-complete",
+  requireRole("admin", "manager", "front_desk"),
+  async (req, res) => {
+    const { Order, Payment, PaymentConnection } = req.models!;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const connection = await PaymentConnection.findOne({ provider: "stripe" });
+    if (!connection || !connection.connectedAccountId.startsWith("dummy_acct_")) {
+      return res.status(400).json({ error: "This shop's Stripe connection isn't in test mode." });
+    }
+
+    const { amount, attemptId } = req.body as { amount?: number; attemptId?: string };
+    if (typeof amount !== "number" || amount <= 0) {
+      return res.status(400).json({ error: "amount must be a positive number" });
+    }
+    if (!attemptId) {
+      return res.status(400).json({ error: "attemptId is required" });
+    }
+
+    const reference = `dummy_card:${attemptId}`;
+    const already = await Payment.findOne({ order: order._id, note: reference });
+    if (!already) {
+      await Payment.create({
+        order: order._id,
+        amount,
+        method: "card_in_person",
+        note: reference,
+        recordedBy: req.auth!.userId,
+      });
+      await recomputeOrderPayments(req.models!, order.id);
+    }
+    const updatedOrder = await Order.findById(order.id).populate("customer");
+    emitToShop(req.auth!.shopId, EVENTS.ORDER_UPDATED, updatedOrder);
+
+    res.json({ message: "Test card charged — no real payment processed." });
+  }
+);
 
 // Marks this order as pushed to the shop's connected accounting system.
 // With no real QuickBooks API integration wired up yet (see

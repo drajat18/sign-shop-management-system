@@ -43,11 +43,14 @@ export default function NewOrderModal({
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [validDays, setValidDays] = useState(30);
   const [description, setDescription] = useState("");
   const [installRequired, setInstallRequired] = useState(false);
   const [installAddress, setInstallAddress] = useState("");
   const [installDate, setInstallDate] = useState("");
   const [installCharge, setInstallCharge] = useState(0);
+  const [discountType, setDiscountType] = useState<"" | "percent" | "flat">("");
+  const [discountValue, setDiscountValue] = useState(0);
   const [items, setItems] = useState<NewOrderItemInput[]>(
     duplicateFrom ? duplicateFrom.items.map((i) => ({ ...i, file: null })) : [emptyItem()]
   );
@@ -108,8 +111,15 @@ export default function NewOrderModal({
     if (price !== null) updateItem(index, { price });
   }
 
-  const total =
+  const preDiscountTotal =
     items.reduce((sum, item) => sum + item.price * item.quantity, 0) + (installRequired ? installCharge : 0);
+  const discountAmount = !discountType || discountValue <= 0
+    ? 0
+    : Math.min(
+        Math.max(discountType === "percent" ? preDiscountTotal * (discountValue / 100) : discountValue, 0),
+        preDiscountTotal
+      );
+  const total = preDiscountTotal - discountAmount;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -156,6 +166,9 @@ export default function NewOrderModal({
             installDate: installRequired ? installDate || undefined : undefined,
             installCharge: installRequired ? installCharge : undefined,
             isQuote: Boolean(isQuote),
+            validDays: isQuote ? validDays : undefined,
+            discountType: discountType || undefined,
+            discountValue: discountType ? discountValue : undefined,
             items: items.map(({ file: _file, ...rest }) => rest),
           }),
         }
@@ -261,6 +274,17 @@ export default function NewOrderModal({
                     required={!isQuote}
                   />
                 </label>
+                {isQuote && (
+                  <label className="field" style={{ maxWidth: 160 }}>
+                    Valid for (days)
+                    <input
+                      type="number"
+                      min={1}
+                      value={validDays}
+                      onChange={(e) => setValidDays(Number(e.target.value) || 30)}
+                    />
+                  </label>
+                )}
                 <label className="field">
                   {isQuote ? "Quote notes" : "Order notes"}
                   <input
@@ -479,6 +503,38 @@ export default function NewOrderModal({
                 </p>
               )}
 
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 12 }}>
+                <label className="field" style={{ maxWidth: 160 }}>
+                  Discount
+                  <select
+                    value={discountType}
+                    onChange={(e) => setDiscountType(e.target.value as "" | "percent" | "flat")}
+                  >
+                    <option value="">None</option>
+                    <option value="percent">Percent off</option>
+                    <option value="flat">Flat amount off</option>
+                  </select>
+                </label>
+                {discountType && (
+                  <label className="field" style={{ maxWidth: 120 }}>
+                    {discountType === "percent" ? "Percent" : "Amount ($)"}
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
+                    />
+                  </label>
+                )}
+              </div>
+
+              {discountAmount > 0 && (
+                <div className="order-total" style={{ fontWeight: 400 }}>
+                  <span>Discount</span>
+                  <span>-${discountAmount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="order-total">
                 <span>Total</span>
                 <span>${total.toFixed(2)}</span>

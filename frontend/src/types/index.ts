@@ -36,8 +36,11 @@ export interface Order {
   id: string;
   customer: Customer;
   dueDate?: string;
+  validUntil?: string;
   description?: string;
   status: OrderStatus;
+  discountType?: "percent" | "flat" | null;
+  discountValue?: number;
   total: number;
   paymentStatus: "unpaid" | "partial" | "paid";
   amountPaid?: number;
@@ -320,6 +323,7 @@ export interface AuditLogEntry {
   id: string;
   action: string;
   actorEmail?: string;
+  actorUserId?: { id: string; name: string };
   targetId?: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
