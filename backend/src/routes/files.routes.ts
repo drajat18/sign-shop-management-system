@@ -4,6 +4,7 @@ import { requireRole } from "../middleware/requireRole.js";
 import { getProvider, type StorageProvider } from "../services/fileStorage/index.js";
 import { resolveUploadPath } from "../services/fileStorage/internalProvider.js";
 import { getShopStorageLimitBytes, getShopStorageUsedBytes } from "../services/storageLimits.js";
+import { allowedFileTypesLabel, isAllowedDesignFile } from "../utils/allowedFileTypes.js";
 
 const router = Router();
 
@@ -28,6 +29,9 @@ router.post("/", requireRole("admin", "manager", "front_desk"), async (req, res)
 
   if (!fileName || !orderId) {
     return res.status(400).json({ error: "fileName and orderId are required" });
+  }
+  if (!isAllowedDesignFile(fileName)) {
+    return res.status(400).json({ error: `That file type isn't supported. Allowed: ${allowedFileTypesLabel()}.` });
   }
 
   const data = Buffer.from(req.body.data ?? "", "base64");

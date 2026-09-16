@@ -5,6 +5,23 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
+// Mirrors the backend's allowlist (backend/src/utils/allowedFileTypes.ts) —
+// duplicated rather than shared since frontend/backend don't share a
+// package here, same as the other client/server validation pairs in this
+// app. The server enforces this regardless; this just avoids a round trip
+// for the common case of picking the wrong file.
+const ALLOWED_EXTENSIONS = new Set([
+  "jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff",
+  "svg", "pdf", "eps", "ai", "psd", "indd", "cdr",
+]);
+const ALLOWED_FILE_TYPES_LABEL = "images, PDF, AI, EPS, PSD, INDD, or CDR";
+
+function isAllowedDesignFile(fileName: string): boolean {
+  const dot = fileName.lastIndexOf(".");
+  if (dot === -1) return false;
+  return ALLOWED_EXTENSIONS.has(fileName.slice(dot + 1).toLowerCase());
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -23,6 +40,9 @@ export async function uploadArtwork(
 ): Promise<ArtworkFile> {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error("File is too large (15MB max)");
+  }
+  if (!isAllowedDesignFile(file.name)) {
+    throw new Error(`That file type isn't supported. Allowed: ${ALLOWED_FILE_TYPES_LABEL}.`);
   }
   const data = await fileToBase64(file);
   return apiFetch<ArtworkFile>("/files", {

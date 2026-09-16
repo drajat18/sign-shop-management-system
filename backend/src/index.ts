@@ -102,6 +102,14 @@ app.use("/api/pricing-rules", pricingRulesRoutes);
 // next(err) directly) so a failed request returns a normal 500 instead of
 // crashing the process.
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  // express.json()'s own body-size limit (see the 25mb cap above) throws a
+  // body-parser error before any route ever runs — without singling it out
+  // here, an oversized file upload looked exactly like a server crash
+  // instead of "that file's too big."
+  if (err && typeof err === "object" && "type" in err && (err as { type?: string }).type === "entity.too.large") {
+    res.status(413).json({ error: "That file is too large — the limit is 25MB." });
+    return;
+  }
   console.error(err);
   res.status(500).json({ error: "Internal server error" });
 });
