@@ -157,7 +157,8 @@ export default function ShopsPage() {
             <p className="empty-state-title">No shops yet</p>
           </div>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -199,7 +200,8 @@ export default function ShopsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

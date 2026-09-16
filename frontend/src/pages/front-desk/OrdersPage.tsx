@@ -268,7 +268,8 @@ export default function OrdersPage() {
             </p>
           </div>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 {canEdit && (
@@ -335,7 +336,8 @@ export default function OrdersPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

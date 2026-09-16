@@ -118,7 +118,8 @@ export default function EmployeesPage() {
             <p className="empty-state-body">Loading employees…</p>
           </div>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -153,7 +154,8 @@ export default function EmployeesPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

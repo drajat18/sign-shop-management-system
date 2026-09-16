@@ -173,7 +173,8 @@ export default function ReportsPage() {
               <p className="cell-muted" style={{ fontSize: 12, marginBottom: 16 }}>
                 Unpaid balance, bucketed by days past the order's due date.
               </p>
-              <table className="table">
+              <div className="table-wrap">
+                <table className="table">
                 <thead>
                   <tr>
                     <th>Bucket</th>
@@ -188,7 +189,8 @@ export default function ReportsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -203,7 +205,8 @@ export default function ReportsPage() {
                   No order items in this range.
                 </p>
               ) : (
-                <table className="table">
+                <div className="table-wrap">
+                  <table className="table">
                   <thead>
                     <tr>
                       <th>Sign type</th>
@@ -220,7 +223,8 @@ export default function ReportsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               )}
             </div>
 
@@ -231,7 +235,8 @@ export default function ReportsPage() {
                   No jobs assigned yet.
                 </p>
               ) : (
-                <table className="table">
+                <div className="table-wrap">
+                  <table className="table">
                   <thead>
                     <tr>
                       <th>Employee</th>
@@ -246,7 +251,8 @@ export default function ReportsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               )}
             </div>
           </div>

@@ -241,7 +241,8 @@ export default function InstallsPage() {
               <p className="empty-state-body">Orders with "Needs installation" checked will show up here.</p>
             </div>
           ) : (
-            <table className="table">
+            <div className="table-wrap">
+              <table className="table">
               <thead>
                 <tr>
                   <th>Customer</th>
@@ -275,7 +276,8 @@ export default function InstallsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </div>
       )}

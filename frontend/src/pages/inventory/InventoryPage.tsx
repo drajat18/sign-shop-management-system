@@ -196,7 +196,8 @@ export default function InventoryPage() {
             </p>
           </div>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Material</th>
@@ -308,7 +309,8 @@ export default function InventoryPage() {
                 );
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
     </div>

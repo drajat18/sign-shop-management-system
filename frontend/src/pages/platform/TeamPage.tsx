@@ -124,7 +124,8 @@ export default function TeamPage() {
             <p className="empty-state-body">Loading team…</p>
           </div>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -159,7 +160,8 @@ export default function TeamPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
     </div>

@@ -441,7 +441,8 @@ export default function SettingsPage() {
             </div>
 
             <div style={{ overflowX: "auto" }}>
-              <table className="table">
+              <div className="table-wrap">
+                <table className="table">
                 <thead>
                   <tr>
                     <th></th>
@@ -507,7 +508,8 @@ export default function SettingsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
 
             {billingTier !== plan.planTier && isDowngrade && (storageOverageBytes > 0 || employeeOverage > 0) && (
@@ -932,7 +934,8 @@ export default function SettingsPage() {
             No pricing rules yet — items are priced by hand until one's added.
           </p>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Sign type</th>
@@ -965,7 +968,8 @@ export default function SettingsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 
@@ -994,7 +998,8 @@ export default function SettingsPage() {
                 Nothing sent yet.
               </p>
             ) : (
-              <table className="table">
+              <div className="table-wrap">
+                <table className="table">
                 <thead>
                   <tr>
                     <th>Channel</th>
@@ -1024,7 +1029,8 @@ export default function SettingsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             )}
           </>
         )}

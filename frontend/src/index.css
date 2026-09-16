@@ -192,6 +192,11 @@ textarea {
   padding: 32px 40px;
   max-width: 1100px;
   width: 100%;
+  /* Without this, a grid item defaults to a min-width based on its content
+     (a wide table here) instead of the 1fr track, so the whole page —
+     sidebar included — grows past the viewport and scrolls sideways rather
+     than letting .table-wrap below handle it. Same trap as .new-order-layout. */
+  min-width: 0;
 }
 
 /* ---------- Buttons ---------- */
@@ -289,6 +294,12 @@ textarea {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+}
+
+/* Lets a table wider than its card scroll on its own, so the page body
+   never scrolls sideways — same convention as .new-order-layout. */
+.table-wrap {
+  overflow-x: auto;
 }
 
 .table {
@@ -697,6 +708,8 @@ textarea {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 20px;
 }
 
@@ -876,6 +889,10 @@ textarea {
     padding: 12px 16px;
     gap: 16px;
     overflow-x: auto;
+    /* Same grid min-width trap as .content — without this the row of nav
+       links forces the whole .shell track wider than the viewport instead
+       of scrolling inside the sidebar itself. */
+    min-width: 0;
   }
 
   .brand {
@@ -887,11 +904,31 @@ textarea {
   }
 
   .sidebar-footer {
+    flex-direction: row;
+    align-items: center;
+    border-top: none;
+    padding-top: 0;
+    flex-shrink: 0;
+  }
+
+  .user-meta {
     display: none;
+  }
+
+  .sidebar-footer .btn-block {
+    width: auto;
   }
 
   .content {
     padding: 20px;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .install-fields-grid {
+    grid-template-columns: 1fr !important;
   }
 }
 

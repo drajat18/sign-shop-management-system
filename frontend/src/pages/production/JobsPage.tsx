@@ -93,7 +93,8 @@ export default function JobsPage() {
             </p>
           </div>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Sign</th>
@@ -201,7 +202,8 @@ export default function JobsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 

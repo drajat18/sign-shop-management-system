@@ -83,7 +83,8 @@ export default function FilesPage() {
           {data.files.length === 0 ? (
             <p className="cell-muted">No files uploaded yet.</p>
           ) : (
-            <table className="table">
+            <div className="table-wrap">
+              <table className="table">
               <thead>
                 <tr>
                   <th>File</th>
@@ -126,7 +127,8 @@ export default function FilesPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </>
       )}

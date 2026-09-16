@@ -215,7 +215,8 @@ export default function ShopDetailModal({
         {employees === null ? (
           <p className="cell-muted">Loading…</p>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -260,7 +261,8 @@ export default function ShopDetailModal({
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
 
         <p className="section-label">Activity log</p>
@@ -276,7 +278,8 @@ export default function ShopDetailModal({
             Nothing logged yet.
           </p>
         ) : (
-          <table className="table">
+          <div className="table-wrap">
+            <table className="table">
             <thead>
               <tr>
                 <th>Action</th>
@@ -293,7 +296,8 @@ export default function ShopDetailModal({
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
     </div>
